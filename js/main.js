@@ -9,82 +9,6 @@
     'use strict';
 
     // ============================================
-    // INICIALIZACIÓN DE CSINTERFACE (COMPATIBILIDAD)
-    // ============================================
-
-    let csInterface = null;
-    let isPhotoshopAvailable = false;
-
-    // Inicializar CSInterface - Compatible con versiones modificadas
-    function initCSInterface() {
-        try {
-            // CSInterface.js ya carga globalmente
-            if (typeof CSInterface !== 'undefined') {
-                csInterface = new CSInterface();
-                isPhotoshopAvailable = csInterface.isAvailable;
-
-                if (isPhotoshopAvailable) {
-                    console.log('[Kohari ORC] Photoshop API detectada');
-                } else {
-                    console.log('[Kohari ORC] CSInterface creado (modo limitado)');
-                }
-                return;
-            }
-        } catch (e) {
-            console.warn('[Kohari ORC] Error al inicializar CSInterface:', e);
-        }
-
-        // Fallback: crear mock
-        csInterface = createMockCSInterface();
-        isPhotoshopAvailable = false;
-        console.log('[Kohari ORC] Modo standalone activado');
-    }
-
-    // Mock CSInterface para modo standalone
-    function createMockCSInterface() {
-        return {
-            evalScript: function(script, callback) {
-                // Simular respuesta de Photoshop
-                setTimeout(() => {
-                    if (script.includes('checkDocument')) {
-                        callback(JSON.stringify({
-                            hasDocument: false,
-                            error: 'Modo standalone - Abre un documento en Photoshop'
-                        }));
-                    } else {
-                        callback(JSON.stringify({ success: false }));
-                    }
-                }, 100);
-            },
-            getSystemPath: function(pathType) {
-                // Retornar path temporal del sistema
-                if (typeof require !== 'undefined') {
-                    const os = require('os');
-                    return os.tmpdir().replace(/\\/g, '/');
-                }
-                return 'C:/temp';
-            },
-            readFile: function(filePath, encoding, callback) {
-                callback(null);
-            },
-            setTitle: function(title) {},
-            getExtensionID: function() { return 'com.kohari.orc.panel'; },
-            getScaleFactor: function() { return 1; },
-            dispatchEvent: function(event) {}
-        };
-    }
-
-    // Constantes SystemPath
-    const SystemPath = {
-        USER_DATA: "userData",
-        COMMON_FILES: "commonFiles",
-        MY_DOCUMENTS: "myDocuments",
-        APPLICATION: "application",
-        EXTENSION: "extension",
-        HOST_APPLICATION: "hostApplication"
-    };
-
-    // ============================================
     // ESTADO DE LA APLICACIÓN
     // ============================================
 
@@ -92,7 +16,6 @@
         results: [],
         bubbleCounter: 0,
         isProcessing: false,
-        currentWorker: null,
         selectedLanguage: 'spa',
         options: {
             autoNumber: true,
@@ -149,7 +72,6 @@
                 const skinInfo = env.appSkinInfo;
                 if (skinInfo) {
                     const bgColor = skinInfo.panelBackgroundColor;
-                    // Si el fondo es oscuro (> 128 en promedio es claro)
                     const brightness = (bgColor.red + bgColor.green + bgColor.blue) / 3;
                     return brightness < 128 ? 'dark' : 'light';
                 }
@@ -157,7 +79,6 @@
         } catch (e) {
             console.warn('[Kohari ORC] No se pudo detectar tema de Photoshop');
         }
-        // Fallback: detectar por prefers-color-scheme
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
             return 'light';
         }
@@ -180,16 +101,19 @@
             return;
         }
 
-        // Detectar y aplicar tema
         const theme = detectPhotoshopTheme();
         applyTheme(theme);
 
-        // Inicializar CSInterface
-        initCSInterface();
-
         bindEvents();
-
         updateStatus('Listo', 'ready');
+
+        // Verificar disponibilidad de Photoshop
+        const psAvailable = window.KohariPhotoshop && window.KohariPhotoshop.isAvailable();
+        if (psAvailable) {
+            console.log('[Kohari ORC] Conectado a Photoshop');
+        } else {
+            console.log('[Kohari ORC] Photoshop no detectado (modo standalone)');
+        }
 
         console.log('[Kohari ORC] Inicializado - Tema:', theme);
     }
@@ -199,7 +123,6 @@
     // ============================================
 
     function bindEvents() {
-        // Botones principales
         if (elements.scanBtn) {
             elements.scanBtn.addEventListener('click', handleScan);
         }
@@ -210,7 +133,6 @@
             elements.exportBtn.addEventListener('click', handleExport);
         }
 
-        // Selección de idioma
         if (elements.languageInputs) {
             elements.languageInputs.forEach(input => {
                 input.addEventListener('change', (e) => {
@@ -220,7 +142,6 @@
             });
         }
 
-        // Opciones
         if (elements.autoNumber) {
             elements.autoNumber.addEventListener('change', (e) => {
                 state.options.autoNumber = e.target.checked;
@@ -244,7 +165,7 @@
     }
 
     // ============================================
-    // FUNCIONES DE ESCANEO
+    // FUNCIÓN PRINCIPAL DE ESCANEO
     // ============================================
 
     async function handleScan() {
@@ -253,56 +174,81 @@
             return;
         }
 
-        // Intentar conectar con Photoshop si no está disponible
-        if (!isPhotoshopAvailable) {
-            showToast('Conectando con Photoshop...', 'info');
-            initCSInterface();
+        // Verificar que KohariPhotoshop esté disponible
+        if (!window.KohariPhotoshop || !window.KohariPhotoshop.isAvailable()) {
+            showToast('Photoshop no detectado. Abre el panel desde Photoshop.', 'error');
+            updateStatus('Error: Photoshop no disponible', 'error');
+            return;
         }
+
+        const api = window.KohariPhotoshop.api;
 
         try {
             state.isProcessing = true;
             elements.scanBtn.disabled = true;
             showLoading(true);
-            updateStatus('Obteniendo selección de Photoshop...', 'processing');
 
-            // Obtener selección de Photoshop
-            const selectionData = await getPhotoshopSelection();
+            // PASO 1: Verificar documento
+            updateStatus('Verificando documento...', 'processing');
+            const docCheck = await api.checkDocument();
+
+            if (!docCheck.hasDocument) {
+                throw new Error('No hay documento abierto en Photoshop. Abre una imagen primero.');
+            }
+
+            // PASO 2: Obtener selección
+            updateStatus('Obteniendo selección...', 'processing');
+            const selectionData = await api.getSelection();
 
             if (!selectionData.success) {
-                // Si falla, intentar método alternativo
-                if (selectionData.error && selectionData.error.includes('No hay documento')) {
-                    throw new Error('Abre una imagen en Photoshop y selecciona una burbuja de texto');
+                const errMsg = selectionData.error || 'Sin selección';
+                if (errMsg.includes('No selection') || errMsg.includes('No hay selección') || errMsg.includes('No se encontró')) {
+                    throw new Error('No hay selección activa. Selecciona una burbuja con la varita mágica u otra herramienta.');
                 }
-                throw new Error(selectionData.error || 'No se pudo obtener la selección');
+                throw new Error('Error al obtener selección: ' + errMsg);
             }
 
+            if (!selectionData.selections || selectionData.selections.length === 0) {
+                throw new Error('La selección está vacía. Selecciona un área con texto.');
+            }
+
+            // PASO 3: Exportar imagen de la selección
             updateStatus('Exportando imagen...', 'processing');
+            const tempPath = api.getTempPath();
+            const exportIndex = state.bubbleCounter + 1;
+            const imageData = await api.exportSelection(tempPath, exportIndex);
 
-            // Exportar selección como imagen
-            const imageData = await exportSelectionImage(selectionData);
             if (!imageData.success) {
-                throw new Error('Error al exportar la imagen: ' + (imageData.error || ''));
+                throw new Error('No se pudo exportar la selección: ' + (imageData.error || 'Error desconocido'));
             }
 
+            // PASO 4: Leer imagen como base64
+            updateStatus('Cargando imagen...', 'processing');
+            const base64Data = await api.readFileAsBase64(imageData.filePath);
+
+            if (!base64Data) {
+                throw new Error('No se pudo leer el archivo de imagen exportado.');
+            }
+
+            const imageDataURL = 'data:image/png;base64,' + base64Data;
+
+            // PASO 5: OCR
             updateStatus('Procesando OCR...', 'processing');
+            const result = await processOCR(imageDataURL, imageData.bounds);
 
-            // Procesar con OCR
-            const result = await processOCR(imageData.filePath, imageData.bounds);
-
-            // Agregar a resultados
+            // PASO 6: Guardar resultado
             addResult(result);
 
-            // Copiar al portapapeles si está habilitado
             if (state.options.copyClipboard) {
                 await copyToClipboard(result.text);
             }
 
-            updateStatus('Escaneo completado', 'ready');
-            showToast(`Texto extraído: "${result.text.substring(0, 30)}${result.text.length > 30 ? '...' : ''}"`, 'success');
+            updateStatus(`Listo — burbuja #${result.id} escaneada`, 'ready');
+            showToast(`#${result.id}: "${result.text.substring(0, 40)}${result.text.length > 40 ? '...' : ''}"`, 'success');
 
         } catch (error) {
-            console.error('[Kohari ORC] Error:', error);
-            updateStatus(`Error: ${error.message}`, 'error');
+            console.error('[Kohari ORC] Error en escaneo:', error);
+            updateStatus('Error: ' + error.message, 'error');
             showToast(error.message, 'error');
         } finally {
             state.isProcessing = false;
@@ -312,110 +258,34 @@
     }
 
     // ============================================
-    // COMUNICACIÓN CON PHOTOSHOP
-    // ============================================
-
-    function getPhotoshopSelection() {
-        return new Promise((resolve) => {
-            try {
-                const script = `checkDocument();`;
-                csInterface.evalScript(script, (result) => {
-                    try {
-                        const data = JSON.parse(result);
-                        if (!data.hasDocument) {
-                            resolve({ success: false, error: 'No hay documento abierto en Photoshop' });
-                            return;
-                        }
-
-                        // Obtener bounds de la selección
-                        const selScript = `getSelections();`;
-                        csInterface.evalScript(selScript, (selResult) => {
-                            try {
-                                const selData = JSON.parse(selResult);
-                                resolve(selData);
-                            } catch (e) {
-                                resolve({ success: false, error: 'Datos de selección inválidos' });
-                            }
-                        });
-                    } catch (e) {
-                        resolve({ success: false, error: 'Error al verificar documento' });
-                    }
-                });
-            } catch (e) {
-                console.error('[Kohari ORC] Error en getPhotoshopSelection:', e);
-                resolve({ success: false, error: 'Error de comunicación con Photoshop. Intenta reiniciar Photoshop.' });
-            }
-        });
-    }
-
-    function exportSelectionImage(selectionData) {
-        return new Promise((resolve) => {
-            try {
-                let tempPath;
-                try {
-                    tempPath = csInterface.getSystemPath(SystemPath.TEMP);
-                } catch (e) {
-                    // Fallback para path temporal
-                    tempPath = 'C:/temp';
-                }
-
-                const index = state.bubbleCounter + 1;
-                const script = `exportSelection("${tempPath.replace(/\\/g, '/')}", ${index});`;
-
-                csInterface.evalScript(script, (result) => {
-                    try {
-                        const data = JSON.parse(result);
-                        resolve(data);
-                    } catch (e) {
-                        resolve({ success: false, error: 'Exportación fallida' });
-                    }
-                });
-            } catch (e) {
-                resolve({ success: false, error: 'Error al exportar' });
-            }
-        });
-    }
-
-    // ============================================
     // PROCESAMIENTO OCR
     // ============================================
 
-    async function processOCR(filePath, bounds) {
+    async function processOCR(imageDataURL, bounds) {
         const lang = languageConfig[state.selectedLanguage];
         const langCode = lang.code;
 
-        // Crear worker de Tesseract
         const worker = await Tesseract.createWorker(langCode, 1, {
             logger: (m) => {
                 if (m.status === 'recognizing text') {
-                    updateStatus(`OCR: ${Math.round(m.progress * 100)}%`, 'processing');
+                    const pct = Math.round((m.progress || 0) * 100);
+                    updateStatus(`OCR: ${pct}%`, 'processing');
                 }
             },
-            errorHandler: (err) => console.error('[Tesseract Error]:', err)
+            errorHandler: (err) => console.error('[Tesseract]:', err)
         });
 
         try {
-            // Leer archivo como data URL
-            const imageData = await readFileAsDataURL(filePath);
-
-            if (!imageData) {
-                throw new Error('No se pudo leer la imagen');
-            }
-
-            // Preprocesar si está habilitado
-            let processedImage = imageData;
+            let processedImage = imageDataURL;
             if (state.options.preprocess) {
-                processedImage = await preprocessImage(imageData);
+                processedImage = await preprocessImage(imageDataURL);
             }
 
-            // Reconocer texto
             const result = await worker.recognize(processedImage);
-
-            // Procesar texto
             let text = result.data.text;
             text = postProcessText(text, lang);
 
-            // Incrementar contador
+            // Incrementar contador SOLO aquí, cuando el OCR tuvo éxito
             state.bubbleCounter++;
 
             return {
@@ -434,26 +304,10 @@
     }
 
     // ============================================
-    // UTILIDADES
+    // PREPROCESAMIENTO DE IMAGEN
     // ============================================
 
-    function readFileAsDataURL(filePath) {
-        return new Promise((resolve, reject) => {
-            try {
-                csInterface.readFile(filePath, 'base64', (data) => {
-                    if (data) {
-                        resolve('data:image/png;base64,' + data);
-                    } else {
-                        reject(new Error('Error al leer archivo'));
-                    }
-                });
-            } catch (e) {
-                reject(new Error('Error al leer archivo'));
-            }
-        });
-    }
-
-    async function preprocessImage(imageData) {
+    function preprocessImage(imageData) {
         return new Promise((resolve) => {
             const img = new Image();
             img.onload = () => {
@@ -462,30 +316,30 @@
 
                 canvas.width = img.width;
                 canvas.height = img.height;
-
                 ctx.drawImage(img, 0, 0);
 
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
+                const iData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = iData.data;
 
-                // Aplicar mejora de contraste
                 for (let i = 0; i < data.length; i += 4) {
                     const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                    const threshold = 128;
-                    const contrast = gray > threshold ? 255 : 0;
-
-                    data[i] = contrast;
-                    data[i + 1] = contrast;
-                    data[i + 2] = contrast;
+                    const val = gray > 128 ? 255 : 0;
+                    data[i] = val;
+                    data[i + 1] = val;
+                    data[i + 2] = val;
                 }
 
-                ctx.putImageData(imageData, 0, 0);
+                ctx.putImageData(iData, 0, 0);
                 resolve(canvas.toDataURL('image/png'));
             };
-            img.onerror = () => resolve(imageData);
+            img.onerror = () => resolve(imageData); // fallback sin preprocesar
             img.src = imageData;
         });
     }
+
+    // ============================================
+    // POST-PROCESAMIENTO DE TEXTO
+    // ============================================
 
     function postProcessText(text, lang) {
         if (!text) return '';
@@ -493,12 +347,11 @@
         text = text.trim();
         text = text.replace(/\s+/g, ' ');
 
-        // Procesamiento específico por idioma
-        if ((state.selectedLanguage === 'jpn' || state.selectedLanguage === 'kor') && state.options.singleLine) {
-            if (state.selectedLanguage === 'jpn') {
-                text = text.replace(/\s+/g, '');
-            }
+        if ((state.selectedLanguage === 'jpn' || state.selectedLanguage === 'jpn+eng') && state.options.singleLine) {
+            text = text.replace(/\s+/g, '');
             text = text.replace(/\n+/g, '');
+        } else if (state.selectedLanguage === 'kor' && state.options.singleLine) {
+            text = text.replace(/\n+/g, ' ').trim();
         } else {
             text = text.replace(/\n{3,}/g, '\n\n');
         }
@@ -510,17 +363,19 @@
     }
 
     // ============================================
-    // RESULTADOS
+    // GESTIÓN DE RESULTADOS
     // ============================================
 
     function addResult(result) {
         state.results.push(result);
         renderResults();
         updateBubbleCount();
-        elements.exportBtn.disabled = false;
+        if (elements.exportBtn) elements.exportBtn.disabled = false;
     }
 
     function renderResults() {
+        if (!elements.resultsList) return;
+
         if (state.results.length === 0) {
             elements.resultsList.innerHTML = `
                 <div class="empty-state">
@@ -574,7 +429,7 @@
         state.bubbleCounter = 0;
         renderResults();
         updateBubbleCount();
-        elements.exportBtn.disabled = true;
+        if (elements.exportBtn) elements.exportBtn.disabled = true;
         updateStatus('Resultados limpiados', 'ready');
         showToast('Todos los resultados eliminados', 'success');
     }
@@ -591,7 +446,7 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `kohari-orc-export-${Date.now()}.txt`;
+        a.download = `kohari-ocr-export-${Date.now()}.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -634,7 +489,7 @@
             toast.style.opacity = '0';
             toast.style.transform = 'translateX(100%)';
             setTimeout(() => toast.remove(), 200);
-        }, 3000);
+        }, 3500);
     }
 
     function createToastContainer() {
@@ -673,7 +528,7 @@
         state.results = state.results.filter(r => r.id !== id);
         renderResults();
         updateBubbleCount();
-        if (state.results.length === 0) {
+        if (state.results.length === 0 && elements.exportBtn) {
             elements.exportBtn.disabled = true;
         }
     };
@@ -699,10 +554,9 @@
         init();
     }
 
-    // Exponer para debugging
     window.KohariORC = {
         state,
-        isPhotoshopAvailable: () => isPhotoshopAvailable
+        isPhotoshopAvailable: () => window.KohariPhotoshop && window.KohariPhotoshop.isAvailable()
     };
 
 })();
