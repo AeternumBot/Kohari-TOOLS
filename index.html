@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kohari ORC</title>
+    <script src="js/libs/CSInterface.js"></script>
+    <script src="js/libs/tesseract.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Logo Banner -->
+        <header class="header">
+            <div class="banner-container">
+                <img src="assets/logo.svg" alt="Kohari" class="logo-image" id="logoImage" onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='flex';">
+                <div class="logo-fallback" id="logoFallback">
+                    <span class="logo-text">Kohari</span>
+                    <span class="logo-subtitle">ORC</span>
+                </div>
+            </div>
+            <div class="version">v1.0.0</div>
+        </header>
+
+        <!-- Language Selection -->
+        <section class="section language-section">
+            <div class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l.91-2.5h4.17l.9 2.5h2l-3.5-12zm-2.08 7.5l1.42-3.82 1.42 3.82h-2.84z"/>
+                </svg>
+                Idioma
+            </div>
+            <div class="language-options">
+                <label class="lang-option" data-lang="spa">
+                    <input type="radio" name="language" value="spa" checked>
+                    <span class="lang-indicator">
+                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </span>
+                    <span class="lang-name">Español</span>
+                </label>
+                <label class="lang-option" data-lang="jpn">
+                    <input type="radio" name="language" value="jpn">
+                    <span class="lang-indicator">
+                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </span>
+                    <span class="lang-name">Japonés</span>
+                </label>
+                <label class="lang-option" data-lang="kor">
+                    <input type="radio" name="language" value="kor">
+                    <span class="lang-indicator">
+                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </span>
+                    <span class="lang-name">Coreano</span>
+                </label>
+                <label class="lang-option" data-lang="eng">
+                    <input type="radio" name="language" value="eng">
+                    <span class="lang-indicator">
+                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </span>
+                    <span class="lang-name">Inglés</span>
+                </label>
+                <label class="lang-option" data-lang="jpn+eng">
+                    <input type="radio" name="language" value="jpn+eng">
+                    <span class="lang-indicator">
+                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </span>
+                    <span class="lang-name">Japonés + Inglés</span>
+                </label>
+            </div>
+        </section>
+
+        <!-- Options -->
+        <section class="section options-section">
+            <div class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+                Opciones
+            </div>
+            <div class="options-grid">
+                <label class="checkbox-option" title="Añade números automáticos a cada burbuja">
+                    <input type="checkbox" id="autoNumber" checked>
+                    <span class="checkmark"></span>
+                    <span>Numerar burbujas</span>
+                </label>
+                <label class="checkbox-option" title="Convierte texto JPN/KOR a una sola línea">
+                    <input type="checkbox" id="singleLine" checked>
+                    <span class="checkmark"></span>
+                    <span>Texto en línea única</span>
+                </label>
+                <label class="checkbox-option" title="Mejora el contraste de la imagen antes del OCR">
+                    <input type="checkbox" id="preprocess" checked>
+                    <span class="checkmark"></span>
+                    <span>Preprocesar imagen</span>
+                </label>
+                <label class="checkbox-option" title="Copia el texto automáticamente al portapapeles">
+                    <input type="checkbox" id="copyClipboard" checked>
+                    <span class="checkmark"></span>
+                    <span>Copiar al portapapeles</span>
+                </label>
+            </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <section class="section actions-section">
+            <button id="scanBtn" class="btn btn-primary" title="Escanear la selección actual de Photoshop">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/>
+                </svg>
+                Escanear Selección
+            </button>
+            <div class="btn-group">
+                <button id="clearBtn" class="btn btn-secondary" title="Limpiar todos los resultados">
+                    Limpiar Resultados
+                </button>
+                <button id="exportBtn" class="btn btn-secondary" disabled title="Exportar todo el texto a un archivo">
+                    Exportar Todo
+                </button>
+            </div>
+        </section>
+
+        <!-- Status -->
+        <div id="statusBar" class="status-bar">
+            <span id="statusText">Listo</span>
+            <span id="bubbleCount">Burbujas: 0</span>
+        </div>
+
+        <!-- Results -->
+        <section class="results-section">
+            <div id="resultsList" class="results-list">
+                <!-- Results will be added here dynamically -->
+                <div class="empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                    <p>Selecciona burbujas de texto en Photoshop<br>luego presiona "Escanear Selección"</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+            <div class="spinner"></div>
+            <p>Procesando OCR...</p>
+        </div>
+    </div>
+
+    <script src="js/photoshop.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

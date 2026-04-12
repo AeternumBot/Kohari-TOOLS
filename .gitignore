@@ -1,0 +1,14 @@
+# System & Tools
+.claude/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Project specific junk
+Consola
+Kohari

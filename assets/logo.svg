@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50">
+  <defs>
+    <style>
+      .logo-text {
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: 36px;
+        font-style: italic;
+        font-weight: 400;
+        letter-spacing: 3px;
+      }
+      .logo-subtitle {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+    </style>
+    <!-- Gradientes que se pueden sobreescribir con CSS -->
+    <linearGradient id="logoGradientDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4fc3f7"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="logoGradientLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0288d1"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo transparente -->
+  <rect width="200" height="50" fill="transparent"/>
+
+  <!-- Logo "Kohari" - usa CSS para el color -->
+  <text x="10" y="38" class="logo-text" fill="url(#logoGradientDark)">Kohari</text>
+
+  <!-- Subtítulo "ORC" -->
+  <text x="145" y="25" class="logo-subtitle" fill="#888">ORC</text>
+</svg>
