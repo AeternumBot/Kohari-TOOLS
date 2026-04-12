@@ -15,13 +15,13 @@
     const isCEP = typeof window.__adobe_cep__ !== 'undefined';
 
     // Rutas de comunicación por archivo (IPC)
-    let IPC_DIR    = '';
+    let IPC_DIR = '';
     let IPC_RESULT = '';
 
     const PhotoshopAPI = {
-        csInterface : null,
-        isAvailable : false,
-        evalWorks   : null,  // null=sin probar | true=PS oficial | false=PS modificado
+        csInterface: null,
+        isAvailable: false,
+        evalWorks: null,  // null=sin probar | true=PS oficial | false=PS modificado
 
         // ── init ─────────────────────────────────────────────────────────────
         init() {
@@ -32,7 +32,7 @@
             try {
                 this.csInterface = new CSInterface();
                 this.isAvailable = true;
-                IPC_DIR    = this._resolveIpcDir();
+                IPC_DIR = this._resolveIpcDir();
                 IPC_RESULT = IPC_DIR + '/kohari_result.json';
                 console.log('[Kohari ORC] CSInterface listo — IPC:', IPC_DIR);
                 return true;
@@ -43,7 +43,7 @@
         },
 
         _resolveIpcDir() {
-            const try_ = (fn) => { try { return fn(); } catch(e) { return ''; } };
+            const try_ = (fn) => { try { return fn(); } catch (e) { return ''; } };
             const candidates = [
                 try_(() => this.csInterface.getSystemPath('userData')),
                 try_(() => this.csInterface.getSystemPath('commonFiles')),
@@ -118,14 +118,14 @@
             const wrapper = `(function(){
     var _r;
     try { _r = ${funcCall}; }
-    catch(_e){ _r = JSON.stringify({success:false,error:_e.toString()}); }
+    catch(_e){ _r = '{"success":false,"error":"' + _e.toString().replace(/"/g, '\\\\"') + '"}'; }
     try {
         var _f = new File('${escapedPath}');
         var _dir = _f.parent;
         if(!_dir.exists){ _dir.create(); }
         _f.encoding = 'UTF-8';
         _f.open('w');
-        _f.write(typeof _r === 'string' ? _r : JSON.stringify(_r));
+        _f.write(typeof _r === 'string' ? _r : String(_r));
         _f.close();
     }catch(_fe){}
 })();`;
@@ -133,7 +133,7 @@
             // Lanzar script (el retorno nos da igual aquí)
             await new Promise((resolve) => {
                 try { this.csInterface.evalScript(wrapper, () => resolve()); }
-                catch(e) { resolve(); }
+                catch (e) { resolve(); }
             });
 
             // Esperar a que ExtendScript termine de escribir el archivo
@@ -164,7 +164,7 @@
                         // Segundo intento sin encoding explícito
                         try {
                             this.csInterface.readFile(filePath, '', (d2) => resolve(d2 || null));
-                        } catch(e) { resolve(null); }
+                        } catch (e) { resolve(null); }
                     });
                 } catch (e) {
                     resolve(null);
@@ -197,7 +197,7 @@
         async exportSelection(tempPath, index) {
             try {
                 const safe = tempPath.replace(/\\/g, '/').replace(/\/$/, '');
-                const raw  = await this.execScript(`exportSelection("${safe}", ${index})`);
+                const raw = await this.execScript(`exportSelection("${safe}", ${index})`);
                 return JSON.parse(raw);
             } catch (e) {
                 console.error('[Kohari ORC] exportSelection:', e.message);
@@ -207,7 +207,7 @@
 
         getTempPath() {
             if (!this.isAvailable) return 'C:/temp';
-            const try_ = (fn) => { try { return fn(); } catch(e) { return ''; } };
+            const try_ = (fn) => { try { return fn(); } catch (e) { return ''; } };
             const p =
                 try_(() => this.csInterface.getSystemPath('userData')) ||
                 try_(() => this.csInterface.getSystemPath('commonFiles')) ||
@@ -216,28 +216,72 @@
         },
 
         readFileAsBase64(filePath) {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
                 if (!this.isAvailable) { resolve(null); return; }
-                try {
-                    this.csInterface.readFile(filePath, 'base64', (d) => resolve(d || null));
-                } catch (e) { resolve(null); }
+
+                let intentos = 0;
+                const maxIntentos = 5;
+
+                const intentarLeer = () => {
+                    intentos++;
+                    try {
+                        if (window.cep && window.cep.fs) {
+                            let fixedPath = filePath;
+
+                            // 1. Limpiar el prefijo basura (file:/// o file:\\\)
+                            fixedPath = fixedPath.replace(/^file:\/+/i, '');
+                            fixedPath = fixedPath.replace(/^file:\\+/i, '');
+
+                            // 2. Decodificar caracteres raros (ej. %20 a espacios)
+                            fixedPath = decodeURI(fixedPath);
+
+                            // 3. Ajuste vital para macOS (si se borró la barra inicial, ponérsela)
+                            if (navigator.appVersion.indexOf("Mac") !== -1 && !fixedPath.startsWith('/')) {
+                                fixedPath = '/' + fixedPath;
+                            }
+
+                            // 4. Ajuste vital para Windows (convertir las barras)
+                            if (navigator.appVersion.indexOf("Win") !== -1) {
+                                fixedPath = fixedPath.replace(/\//g, '\\');
+                            }
+
+                            var result = window.cep.fs.readFile(fixedPath, window.cep.encoding.Base64);
+
+                            if (result.err === window.cep.fs.NO_ERROR) {
+                                resolve(result.data); // ¡Bingo!
+                            } else {
+                                if (intentos < maxIntentos) {
+                                    setTimeout(intentarLeer, 200);
+                                } else {
+                                    reject(new Error("CEP FS Error: " + result.err + " en la ruta: " + fixedPath));
+                                }
+                            }
+                        } else {
+                            reject(new Error("La API window.cep.fs no existe."));
+                        }
+                    } catch (e) {
+                        reject(new Error("Excepción leyendo imagen: " + e.message));
+                    }
+                };
+
+                intentarLeer(); // Arrancamos el primer intento
             });
         }
-    };
 
+    };
     // ── Boot ──────────────────────────────────────────────────────────────────
     function init() {
         PhotoshopAPI.init();
         if (PhotoshopAPI.isAvailable) {
             // Pre-detectar modo apenas carga el panel (sin esperar al primer clic)
-            PhotoshopAPI.detectEvalMode().catch(() => {});
+            PhotoshopAPI.detectEvalMode().catch(() => { });
         }
     }
 
     window.KohariPhotoshop = {
         isCEP,
-        isAvailable : () => PhotoshopAPI.isAvailable,
-        api         : PhotoshopAPI
+        isAvailable: () => PhotoshopAPI.isAvailable,
+        api: PhotoshopAPI
     };
 
     if (document.readyState === 'loading') {
