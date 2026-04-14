@@ -205,6 +205,7 @@
             }
         },
 
+
         getTempPath() {
             if (!this.isAvailable) return 'C:/temp';
             const try_ = (fn) => { try { return fn(); } catch (e) { return ''; } };

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ExtensionBundleId="com.kohari.orc" ExtensionBundleVersion="1.0.0" Version="10.0">
+<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ExtensionBundleId="com.kohari.orc" ExtensionBundleVersion="1.1.0" Version="10.0">
     <ExtensionList>
-        <Extension Id="com.kohari.orc.panel" Version="1.0.0"/>
+        <Extension Id="com.kohari.orc.panel" Version="1.1.0"/>
     </ExtensionList>
     <ExecutionEnvironment>
         <HostList>

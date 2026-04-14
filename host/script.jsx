@@ -10,7 +10,6 @@
 #target photoshop
 
 function checkDocument() {
-    alert("¡Hola! El JSX sí se está comunicando con Photoshop."); // AÑADE ESTA LÍNEA
     try {
         var hasDoc = (app.documents.length > 0);
         var docName = hasDoc ? app.activeDocument.name.replace(/"/g, '\\"') : "";

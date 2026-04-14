@@ -5,7 +5,7 @@
  * Compatible con Photoshop 2022+ (incluyendo versiones modificadas/portables)
  */
 
-(function() {
+(function () {
     'use strict';
 
     // ============================================
@@ -22,7 +22,8 @@
             singleLine: true,
             preprocess: true,
             copyClipboard: true
-        }
+        },
+
     };
 
     // ============================================
@@ -57,7 +58,7 @@
             autoNumber: document.getElementById('autoNumber'),
             singleLine: document.getElementById('singleLine'),
             preprocess: document.getElementById('preprocess'),
-            copyClipboard: document.getElementById('copyClipboard')
+            copyClipboard: document.getElementById('copyClipboard'),
         };
     }
 
@@ -104,6 +105,7 @@
         const theme = detectPhotoshopTheme();
         applyTheme(theme);
 
+
         bindEvents();
         updateStatus('Listo', 'ready');
 
@@ -117,6 +119,7 @@
 
         console.log('[Kohari ORC] Inicializado - Tema:', theme);
     }
+
 
     // ============================================
     // EVENTOS
@@ -162,7 +165,10 @@
                 state.options.copyClipboard = e.target.checked;
             });
         }
+
     }
+
+
 
     // ============================================
     // FUNCIÓN PRINCIPAL DE ESCANEO
@@ -516,7 +522,7 @@
         }
     }
 
-    window.copyResultText = async function(id) {
+    window.copyResultText = async function (id) {
         const result = state.results.find(r => r.id === id);
         if (result) {
             await copyToClipboard(result.text);
@@ -524,7 +530,7 @@
         }
     };
 
-    window.deleteResult = function(id) {
+    window.deleteResult = function (id) {
         state.results = state.results.filter(r => r.id !== id);
         renderResults();
         updateBubbleCount();
