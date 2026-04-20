@@ -14,7 +14,6 @@
         <!-- Logo Banner -->
         <header class="header">
             <div class="banner-container">
-                <!-- Logo SVG: visible por defecto, se oculta si falla la carga -->
                 <img
                     src="assets/logo.svg"
                     alt="Kohari ORC"
@@ -22,13 +21,12 @@
                     id="logoImage"
                     onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='flex';"
                 >
-                <!-- Fallback: oculto por defecto, solo aparece si el SVG falla -->
                 <div class="logo-fallback" id="logoFallback" style="display:none;">
                     <span class="logo-text">Kohari</span>
                     <span class="logo-subtitle">ORC</span>
                 </div>
             </div>
-            <div class="version">v1.1.0</div>
+            <div class="version">v1.2.0</div>
         </header>
 
         <!-- Language Selection -->
@@ -41,7 +39,7 @@
             </div>
             <div class="language-options">
                 <label class="lang-option" data-lang="spa">
-                    <input type="radio" name="language" value="spa" checked>
+                    <input type="radio" name="language" value="spa">
                     <span class="lang-indicator">
                         <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                             <polyline points="20 6 9 17 4 12"></polyline>
@@ -59,7 +57,7 @@
                     <span class="lang-name">Japonés</span>
                 </label>
                 <label class="lang-option" data-lang="kor">
-                    <input type="radio" name="language" value="kor">
+                    <input type="radio" name="language" value="kor" checked>
                     <span class="lang-indicator">
                         <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                             <polyline points="20 6 9 17 4 12"></polyline>
@@ -76,15 +74,61 @@
                     </span>
                     <span class="lang-name">Inglés</span>
                 </label>
-                <label class="lang-option" data-lang="jpn+eng">
-                    <input type="radio" name="language" value="jpn+eng">
-                    <span class="lang-indicator">
-                        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
+            </div>
+        </section>
+
+        <!-- Text Type Selection -->
+        <section class="section type-section">
+            <div class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"/>
+                </svg>
+                Tipo de texto
+            </div>
+            <div class="type-options">
+                <label class="type-option" data-type="bubble" title="Texto dentro de un globo de diálogo">
+                    <input type="radio" name="textType" value="bubble" checked>
+                    <span class="type-indicator">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
                     </span>
-                    <span class="lang-name">Japonés + Inglés</span>
+                    <span class="type-name">Burbuja</span>
                 </label>
+                <label class="type-option" data-type="OT" title="Narración fuera de globo, fondo blanco (Off-text)">
+                    <input type="radio" name="textType" value="OT">
+                    <span class="type-indicator">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M3 18h12v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+                    </span>
+                    <span class="type-name">OT</span>
+                </label>
+                <label class="type-option" data-type="ST" title="Texto de personaje sin globo (Sound Text)">
+                    <input type="radio" name="textType" value="ST">
+                    <span class="type-indicator">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                    </span>
+                    <span class="type-name">ST</span>
+                </label>
+            </div>
+        </section>
+        <!-- Engine Selection -->
+        <section class="section engine-section">
+            <div class="section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/>
+                </svg>
+                Motor de OCR
+            </div>
+            <div class="engine-options">
+                <label class="engine-option selected" title="Usa Tesseract.js localmente (sin internet, rápido)">
+                    <input type="radio" name="ocrEngine" value="local" checked>
+                    <span class="engine-name">Local (Tesseract)</span>
+                </label>
+                <label class="engine-option" title="Usa Modelos de Google en la nube (requiere internet, alta precisión manga)">
+                    <input type="radio" name="ocrEngine" value="gemini">
+                    <span class="engine-name">IA en la Nube</span>
+                </label>
+            </div>
+            <div class="api-key-container" id="apiKeyContainer" style="display: none;">
+                <input type="password" id="geminiApiKey" class="input-field" placeholder="Pega aquí tu API Key de Google">
             </div>
         </section>
 
@@ -112,14 +156,13 @@
                     <span class="checkmark"></span>
                     <span>Preprocesar imagen</span>
                 </label>
-                <label class="checkbox-option" title="Copia el texto automáticamente al portapapeles">
+                <label class="checkbox-option" title="Copia el texto de cada burbuja automáticamente al escanear">
                     <input type="checkbox" id="copyClipboard" checked>
                     <span class="checkmark"></span>
-                    <span>Copiar al portapapeles</span>
+                    <span>Copiar al escanear</span>
                 </label>
             </div>
         </section>
-
 
         <!-- Action Buttons -->
         <section class="section actions-section">
@@ -129,12 +172,31 @@
                 </svg>
                 Escanear Selección
             </button>
+
+            <!-- Strip control row -->
+            <div class="strip-control-row">
+                <div class="strip-info" title="Haz clic en el número para editar la tira inicial">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+                    <span>Tira <input type="number" id="stripInput" value="1" min="1" class="strip-number-input"></span>
+                </div>
+                <button id="newStripBtn" class="btn btn-strip" title="Finalizar tira actual e iniciar una nueva">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                    </svg>
+                    Nueva Tira
+                </button>
+            </div>
+
             <div class="btn-group">
                 <button id="clearBtn" class="btn btn-secondary" title="Limpiar todos los resultados">
-                    Limpiar Resultados
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    Limpiar
                 </button>
-                <button id="exportBtn" class="btn btn-secondary" disabled title="Exportar todo el texto a un archivo">
-                    Exportar Todo
+                <button id="copyAllBtn" class="btn btn-accent" disabled title="Copiar todo el texto organizado por tiras al portapapeles">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                    </svg>
+                    Copiar Todo
                 </button>
             </div>
         </section>
@@ -142,7 +204,7 @@
         <!-- Status -->
         <div id="statusBar" class="status-bar">
             <span id="statusText">Listo</span>
-            <span id="bubbleCount">Burbujas: 0</span>
+            <span id="bubbleCount">0 burbujas · 1 tira</span>
         </div>
 
         <!-- Results -->
@@ -157,7 +219,7 @@
             </div>
         </section>
 
-        <!-- Loading Overlays -->
+        <!-- Loading Overlay -->
         <div id="loadingOverlay" class="loading-overlay" style="display: none;">
             <div class="spinner"></div>
             <p>Procesando OCR...</p>

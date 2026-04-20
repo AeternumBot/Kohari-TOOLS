@@ -82,19 +82,59 @@ function exportSelection(tempPath, index) {
         var filePath = tempPath + '/' + fileName;
         var file = new File(filePath);
 
+        // ── Duplicar documento ──────────────────────────────────────────────
         var tempDoc = doc.duplicate();
         try {
+            // Aplanar TODO (fusionar capas visibles, incluyendo efectos de capa)
             tempDoc.flatten();
+
+            // Convertir a RGB si está en otro modo (CMYK, Grises, etc.)
             if (tempDoc.mode !== DocumentMode.RGB) {
                 tempDoc.changeMode(ChangeMode.RGB);
             }
+
+            // ── Recortar usando los bounds ya capturados del doc original ───
+            // IMPORTANTE: NO llamar a tempDoc.selection.bounds aquí porque
+            // flatten() puede limpiar la selección activa → "No existe ese elemento"
             tempDoc.crop(bounds);
 
+            // ── Intentar aislar el globo sobre fondo blanco ─────────────────
+            // Envuelto en try-catch: si PS rechaza mover capas de Fondo
+            // bloqueadas, continuamos igual y el preprocesado JS se encarga.
+            try {
+                // Desbloquear capa de Fondo si es Background layer
+                var contentLayer = tempDoc.artLayers[0];
+                if (contentLayer.isBackgroundLayer) {
+                    contentLayer.isBackgroundLayer = false;
+                }
+
+                // Crear capa blanca y colocarla debajo del contenido
+                var bgLayer = tempDoc.artLayers.add();
+                bgLayer.name = 'KohariBG';
+                bgLayer.move(contentLayer, ElementPlacement.PLACEAFTER);
+
+                // Rellenar de blanco
+                var whiteColor = new SolidColor();
+                whiteColor.rgb.red = whiteColor.rgb.green = whiteColor.rgb.blue = 255;
+                tempDoc.selection.selectAll();
+                tempDoc.activeLayer = bgLayer;
+                tempDoc.selection.fill(whiteColor);
+                tempDoc.selection.deselect();
+
+                // Aplanar para componer texto sobre fondo blanco
+                tempDoc.flatten();
+            } catch (bgErr) {
+                // Falló el fondo blanco — continuar con la imagen tal cual
+                try { tempDoc.selection.deselect(); } catch (e2) { }
+            }
+
+            // ── Guardar PNG ─────────────────────────────────────────────────
             var pngOpts = new PNGSaveOptions();
             pngOpts.compression = 3;
             pngOpts.interlaced = false;
 
             tempDoc.saveAs(file, pngOpts, true, Extension.LOWERCASE);
+
         } finally {
             tempDoc.close(SaveOptions.DONOTSAVECHANGES);
         }
