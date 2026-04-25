@@ -41,6 +41,8 @@ function getSelections() {
 // --- FUNCIONES DE LIMPIEZA IA ---
 
 function exportSelectionWithMask(tempPath, index) {
+    var prevDialogs = app.displayDialogs;
+    app.displayDialogs = DialogModes.NO;
     try {
         if (app.documents.length === 0) return '{"success": false, "error": "No hay documento"}';
         var doc = app.activeDocument;
@@ -97,13 +99,17 @@ function exportSelectionWithMask(tempPath, index) {
             tempChan.remove();
         }
 
+        app.displayDialogs = prevDialogs;
         return '{"success": true, "imagePath": "' + imageFilePath + '", "maskPath": "' + maskFilePath + '", "cropBounds": {"left": ' + cropBounds[0] + ', "top": ' + cropBounds[1] + '}}';
     } catch (e) {
+        app.displayDialogs = prevDialogs;
         return '{"success": false, "error": "exportSelectionWithMask: ' + escapeJSON(e) + '"}';
     }
 }
 
 function saveAndPasteBase64Image(b64FilePath, tempPath, index, cropLeft, cropTop) {
+    var prevDialogs = app.displayDialogs;
+    app.displayDialogs = DialogModes.NO;
     try {
         var outFile = new File(b64FilePath);
         if (!outFile.exists) return '{"success": false, "error": "Archivo no encontrado"}';
@@ -119,8 +125,10 @@ function saveAndPasteBase64Image(b64FilePath, tempPath, index, cropLeft, cropTop
         var lb = pastedLayer.bounds;
         pastedLayer.translate(cropLeft - parseFloat(lb[0]), cropTop - parseFloat(lb[1]));
 
+        app.displayDialogs = prevDialogs;
         return '{"success": true, "layerName": "' + pastedLayer.name + '"}';
     } catch (e) {
+        app.displayDialogs = prevDialogs;
         return '{"success": false, "error": "saveAndPasteBase64Image: ' + escapeJSON(e) + '"}';
     }
 }
@@ -128,6 +136,8 @@ function saveAndPasteBase64Image(b64FilePath, tempPath, index, cropLeft, cropTop
 // --- LIMPIEZA DE BURBUJAS (ULTRA-SAFE) ---
 
 function fillBubblesWhite() {
+    var prevDialogs = app.displayDialogs;
+    app.displayDialogs = DialogModes.NO;
     try {
         if (app.documents.length === 0) return '{"success": false, "error": "No hay documento"}';
         var doc = app.activeDocument;
@@ -137,9 +147,6 @@ function fillBubblesWhite() {
 
         var white = new SolidColor();
         white.rgb.red = white.rgb.green = white.rgb.blue = 255;
-
-        var prevDialogs = app.displayDialogs;
-        app.displayDialogs = DialogModes.NO;
         
         try {
             doc.selection.expand(2);   
@@ -155,6 +162,7 @@ function fillBubblesWhite() {
         app.displayDialogs = prevDialogs;
         return '{"success": true, "layerName": "Kohari_BubbleFill"}';
     } catch (e) {
+        app.displayDialogs = prevDialogs;
         return '{"success": false, "error": "fillBubblesWhite: ' + escapeJSON(e) + '"}';
     }
 }
