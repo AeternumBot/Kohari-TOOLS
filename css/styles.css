@@ -307,62 +307,72 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 10px 16px;
     background-color: var(--ps-bg-secondary);
     border-bottom: 1px solid var(--ps-border-color);
     flex-shrink: 0;
+    min-height: 52px;
 }
 
 .banner-container {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex: 1;
+    min-width: 0; /* Permite que el contenido se encoja */
 }
 
 .logo-image {
-    max-height: 40px;
-    max-width: 180px;
-    object-fit: contain;
+    height: 36px;
+    width: auto;
+    flex-shrink: 0;
     display: block;
 }
 
 :root[data-theme="medium"] .logo-image,
 :root[data-theme="light"] .logo-image {
-    filter: brightness(0.7) contrast(1.3);
+    filter: brightness(0.85) contrast(1.2);
 }
 
-.logo-fallback {
-    display: none;
+.logo-branding {
+    display: flex;
     align-items: baseline;
     gap: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .logo-text {
     font-family: var(--font-logo);
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 400;
-    letter-spacing: 2px;
+    letter-spacing: 1.5px;
     font-style: italic;
     background: linear-gradient(135deg, var(--logo-gradient-start) 0%, var(--logo-gradient-end) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    line-height: 1.2; /* Aumentado para evitar cortes */
+    padding-right: 4px; /* Espacio extra para la inclinación de la itálica */
+    white-space: nowrap;
 }
 
 .logo-subtitle {
     font-family: var(--font-primary);
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 10px;
+    font-weight: 600;
     color: var(--ps-text-secondary);
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
+    margin-left: 2px;
 }
 
 .version {
     color: var(--ps-text-secondary);
     font-size: 10px;
     font-weight: 500;
+    flex-shrink: 0;
+    margin-left: 8px;
 }
 
 /* =====================================================
@@ -1338,3 +1348,10 @@ body {
     background-color: var(--ps-accent-primary);
     color: var(--ps-text-bright);
 }
+
+.cleaner-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+

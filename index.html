@@ -15,13 +15,12 @@
         <header class="header">
             <div class="banner-container">
                 <img
-                    src="Kohari_Logo-.png"
-                    alt="Kohari Tools"
+                    src="assets/logo.png"
+                    alt="Logo"
                     class="logo-image"
                     id="logoImage"
-                    onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='flex';"
                 >
-                <div class="logo-fallback" id="logoFallback" style="display:none;">
+                <div class="logo-branding" id="logoBranding">
                     <span class="logo-text">Kohari</span>
                     <span class="logo-subtitle">TOOLS</span>
                 </div>
@@ -41,7 +40,13 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/>
                 </svg>
-                Limpiador IA
+                Limpiador
+            </button>
+            <button class="tab-btn" data-tab="extras">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13.73 15l2.25 2.25c.39.39 1.02.39 1.41 0l3.18-3.18c.39-.39.39-1.02 0-1.41L18.32 10.4l-4.59 4.6zM10.4 18.32l4.6-4.59-2.25-2.25-4.59 4.6c-.39.39-.39 1.02 0 1.41l3.18 3.18c.39.39 1.02.39 1.41 0zM19.03 3.51L16.49 1H7.51L4.97 3.51V12.5l2.54 2.54h8.98l2.54-2.54V3.51z"/>
+                </svg>
+                Extras
             </button>
         </nav>
 
@@ -275,12 +280,20 @@
                         </div>
                     </div>
 
-                    <button id="cleanWithAIBtn" class="btn btn-ai-clean" title="Limpiar texto de la selección con IA y pegar como capa">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/>
-                        </svg>
-                        Limpiar Selección
-                    </button>
+                    <div class="cleaner-actions">
+                        <button id="cleanWithAIBtn" class="btn btn-ai-clean" title="Limpiar texto de la selección con IA y pegar como capa">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/>
+                            </svg>
+                            Limpiar Selección con IA
+                        </button>
+                        <button id="cleanBubblesBtn" class="btn btn-primary" title="Rellenar de blanco los globos seleccionados automáticamente">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                            </svg>
+                            Rellenar Globos (Blanco)
+                        </button>
+                    </div>
 
                     <div id="aiStatus" class="ai-status-large" style="display: none;">
                         <div class="ai-spinner-large"></div>
@@ -306,6 +319,32 @@
                                 <p>Requiere una conexión a internet activa para el procesamiento en la nube. El tiempo de espera dependerá de la complejidad de la limpieza.</p>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extras Tab Panel -->
+            <div class="tab-panel" id="tab-extras">
+                <div class="cleaner-container">
+                    <div class="cleaner-header">
+                        <h2 class="cleaner-title">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/>
+                            </svg>
+                            Conversor TPL a TypeR
+                        </h2>
+                        <p class="cleaner-description">
+                            Selecciona tus archivos .tpl (Tool Presets) de Photoshop para convertirlos a formato TypeR_Export.json. Cada archivo .tpl será una carpeta.
+                        </p>
+                    </div>
+                    
+                    <div class="cleaner-actions">
+                        <button id="convertTplBtn" class="btn btn-secondary" title="Seleccionar archivos .tpl y generar JSON en el escritorio">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                            </svg>
+                            Convertir .TPL a JSON
+                        </button>
                     </div>
                 </div>
             </div>

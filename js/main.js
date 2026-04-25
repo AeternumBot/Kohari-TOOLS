@@ -71,6 +71,8 @@
             copyClipboard:  document.getElementById('copyClipboard'),
             // AI Cleaner elements
             cleanWithAIBtn: document.getElementById('cleanWithAIBtn'),
+            cleanBubblesBtn: document.getElementById('cleanBubblesBtn'),
+            convertTplBtn:  document.getElementById('convertTplBtn'),
             aiStatus:       document.getElementById('aiStatus'),
             aiStatusText:   document.getElementById('aiStatusText'),
         };
@@ -218,6 +220,8 @@
         if (elements.copyAllBtn) elements.copyAllBtn.addEventListener('click', handleCopyAll);
         if (elements.newStripBtn) elements.newStripBtn.addEventListener('click', handleNewStrip);
         if (elements.cleanWithAIBtn) elements.cleanWithAIBtn.addEventListener('click', handleCleanWithAI);
+        if (elements.cleanBubblesBtn) elements.cleanBubblesBtn.addEventListener('click', handleFillBubblesWhite);
+        if (elements.convertTplBtn) elements.convertTplBtn.addEventListener('click', handleConvertTPL);
 
         if (elements.languageInputs) {
             elements.languageInputs.forEach(input => {
@@ -423,6 +427,113 @@
     }
 
     /**
+     * Rellena de blanco la selección activa (para limpiar burbujas)
+     * Funcionalidad nativa de Kohari - NO usa APIs externas ni archivos .atn
+     */
+    async function handleFillBubblesWhite() {
+        if (state.isProcessing) return;
+
+        if (!window.KohariPhotoshop || !window.KohariPhotoshop.isAvailable()) {
+            showToast('Photoshop no detectado. Abre el panel desde Photoshop.', 'error');
+            return;
+        }
+
+        const api = window.KohariPhotoshop.api;
+
+        try {
+            state.isProcessing = true;
+            if (elements.cleanBubblesBtn) elements.cleanBubblesBtn.disabled = true;
+            updateStatus('Rellenando burbujas de blanco...', 'processing');
+
+            const docCheck = await api.checkDocument();
+            if (!docCheck.hasDocument) {
+                showToast('Abre un documento en Photoshop primero.', 'error');
+                return;
+            }
+
+            const response = await api.fillBubblesWhite();
+
+            if (response.success) {
+                showToast('¡Burbujas rellenadas de blanco!', 'success');
+                updateStatus('Capa creada: ' + (response.layerName || 'Kohari_BubbleFill'), 'ready');
+            } else {
+                showToast('Error: ' + response.error, 'error');
+                updateStatus('Error: ' + response.error, 'error');
+            }
+
+        } catch (error) {
+            console.error('[Kohari ORC] Error en fillBubblesWhite:', error);
+            showToast('Error inesperado: ' + error.message, 'error');
+            updateStatus('Error: ' + error.message, 'error');
+        } finally {
+            state.isProcessing = false;
+            if (elements.cleanBubblesBtn) elements.cleanBubblesBtn.disabled = false;
+        }
+    }
+
+    /**
+     * Inicia el proceso de conversión de TPL a JSON
+     */
+    async function handleConvertTPL() {
+        if (state.isProcessing) return;
+
+        try {
+            // 1. Pedir al usuario que seleccione los archivos .tpl
+            const filePaths = await new Promise((resolve) => {
+                const result = window.cep.fs.showOpenDialog(
+                    false, // allowMultiple (Photoshop usually supports false or true, but cep.fs is tricky)
+                    false, // chooseDirectory
+                    'Selecciona tus archivos .tpl (puedes seleccionar varios)', // title
+                    '', // initialPath
+                    ['tpl', 'TPL'] // fileTypes
+                );
+                
+                if (result.err === 0 && result.data && result.data.length > 0) {
+                    resolve(result.data);
+                } else {
+                    resolve(null);
+                }
+            });
+
+            if (!filePaths || filePaths.length === 0) return;
+
+            state.isProcessing = true;
+            if (elements.convertTplBtn) elements.convertTplBtn.disabled = true;
+            showAIStatus(true, 'Convirtiendo TPLs... Esto puede tardar.');
+
+            // filePaths is an array. We join them with "|"
+            const filePathsStr = filePaths.join('|');
+            const response = await api.convertTPLsToJSON(filePathsStr);
+            
+            if (response.success) {
+                const desktopPath = window.cep.fs.getSystemPath(window.cep.fs.SystemPath.USER_DATA).replace(/AppData.*/i, 'Desktop');
+                const saveResult = window.cep.fs.showSaveDialogEx(
+                    'Guardar TypeR_Export.json',
+                    desktopPath,
+                    ['json'],
+                    'TypeR_Export.json',
+                    ''
+                );
+
+                if (saveResult.err === 0 && saveResult.data) {
+                    window.cep.fs.writeFile(saveResult.data, response.jsonStr);
+                    alert('¡Conversión exitosa! Archivo guardado en:\\n' + saveResult.data);
+                }
+            } else {
+                alert('Error al convertir: ' + response.error);
+            }
+
+        } catch (error) {
+            console.error('[Kohari ORC] Error in handleConvertTPL:', error);
+            alert('Error inesperado: ' + error.message);
+        } finally {
+            state.isProcessing = false;
+            showAIStatus(false);
+            if (elements.convertTplBtn) elements.convertTplBtn.disabled = false;
+        }
+    }
+
+    /**
      * Envía imagen + máscara a iopaint-lama en Hugging Face Spaces
      * @param {string} imageBase64 - Imagen original en base64 (sin prefix data:image)
      * @param {string} maskBase64 - Máscara en base64 (blanco=área a limpiar)
@@ -432,18 +543,19 @@
         const IOPAINT_URL = 'https://sanster-iopaint-lama.hf.space/api/v1/inpaint';
 
         const requestBody = {
-            image: "data:image/png;base64," + imageBase64,
+            image: "data:image/jpeg;base64," + imageBase64,
             mask: "data:image/png;base64," + maskBase64,
             ldm_steps: 1,
             ldm_sampler: "ddim",
-            hd_strategy: "Original",
+            hd_strategy: "Resize",
+            hd_strategy_resize_limit: 1024,
             cv2_flag: "INPAINT_NS",
             cv2_radius: 4
         };
 
         // Intentar con timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10m timeout
 
         try {
             const response = await fetch(IOPAINT_URL, {
@@ -492,7 +604,7 @@
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
-                throw new Error('Timeout: El servidor no respondió en 60 segundos. Intenta de nuevo.');
+                throw new Error('Timeout: El servidor no respondió en 10 minutos. Intenta de nuevo.');
             }
             throw error;
         }

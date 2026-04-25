@@ -305,8 +305,8 @@
         },
 
         /**
-         * Guarda imagen limpia (Base64) en disco y la pega como capa — todo en JSX.
-         * Evita usar cep.fs.writeFile que falla en PS modificado (Error 1/2).
+         * Guarda imagen limpia (Base64) en disco y la pega como capa.
+         * Escribe directamente como binario usando CEP para evitar el loop lento en JSX.
          * @param {string} base64Data - Base64 de la imagen (sin prefijo data:)
          * @param {string} tempPath   - Carpeta temporal
          * @param {number} index      - Índice único del archivo
@@ -322,12 +322,12 @@
                     .replace(/\/$/, '');
                 safe = decodeURIComponent(safe);
 
-                const b64FilePath = safe + '/kohari_b64_' + index + '.txt';
+                const b64FilePath = safe + '/kohari_b64_' + index + '.png';
                 const b64FilePathWin = b64FilePath.replace(/\//g, '\\');
 
                 if (window.cep && window.cep.fs) {
                     const writeTarget = navigator.appVersion.indexOf('Win') !== -1 ? b64FilePathWin : b64FilePath;
-                    const writeResult = window.cep.fs.writeFile(writeTarget, base64Data, window.cep.encoding.UTF8);
+                    const writeResult = window.cep.fs.writeFile(writeTarget, base64Data, window.cep.encoding.Base64);
                     if (writeResult.err !== window.cep.fs.NO_ERROR) {
                         return { success: false, error: 'No se pudo escribir base64 temporal: Error ' + writeResult.err + ' en ' + writeTarget };
                     }
@@ -348,6 +348,55 @@
                 return JSON.parse(raw);
             } catch (e) {
                 console.error('[Kohari ORC] saveAndPasteBase64Image:', e.message);
+                return { success: false, error: e.message };
+            }
+        },
+
+        /**
+         * Rellena de blanco la selección activa (para limpiar burbujas)
+         * Implementación nativa sin depender de archivos .atn externos
+         */
+        async fillBubblesWhite() {
+            try {
+                const raw = await this.execScript('fillBubblesWhite()');
+                return JSON.parse(raw);
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        },
+
+        /**
+         * Llama al script export_tpl.jsx para convertir TPL a JSON
+         */
+        async convertTPLsToJSON(filePathsStr) {
+            try {
+                let extensionPath = '';
+                if (window.__adobe_cep__) {
+                    extensionPath = window.__adobe_cep__.getExtensionPath();
+                } else if (window.cep) {
+                    extensionPath = window.cep.fs.getSystemPath(window.cep.fs.SystemPath.EXTENSION);
+                }
+                
+                // Normalizar path
+                extensionPath = extensionPath.replace(/\\/g, '/');
+                
+                // Primero evaluamos el script export_tpl.jsx para que las funciones estén disponibles
+                const scriptPath = extensionPath + '/host/export_tpl.jsx';
+                await this.execScript(`$.evalFile("${scriptPath}")`);
+
+                // Luego llamamos a la función
+                const raw = await this.execScript(`processTPLFiles("${filePathsStr.replace(/\\/g, '\\\\')}")`);
+                
+                // Parseamos la respuesta (el JSON grande)
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (parsed.error) return { success: false, error: parsed.error };
+                    return { success: true, jsonStr: raw }; // Devolvemos el string crudo para guardarlo
+                } catch(e) {
+                    return { success: false, error: 'Respuesta inválida del script TPL: ' + raw.substring(0, 50) };
+                }
+                
+            } catch (e) {
                 return { success: false, error: e.message };
             }
         }
