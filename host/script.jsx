@@ -231,7 +231,9 @@ function pasteUpscaledTiles(pathsStr, targetWidth, targetHeight, index, chunkHei
         
         for (var i = 0; i < paths.length; i++) {
             var outFile = new File(paths[i]);
-            if (!outFile.exists) continue;
+            if (!outFile.exists) {
+                throw new Error("File not found: " + paths[i]);
+            }
             
             var upDoc = app.open(outFile);
             upDoc.selection.selectAll();

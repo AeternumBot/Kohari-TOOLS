@@ -1349,9 +1349,276 @@ body {
     color: var(--ps-text-bright);
 }
 
+/* =====================================================
+   EXTRAS TAB
+   ===================================================== */
+
+#tab-extras {
+    overflow: hidden;
+}
+
+.extras-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Hero intro */
+.extras-hero {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, var(--ps-bg-secondary) 0%, var(--ps-bg-tertiary) 100%);
+    border: 1px solid var(--ps-border-color);
+    border-radius: 10px;
+    margin-bottom: 4px;
+}
+
+.extras-hero-icon {
+    color: var(--ps-accent-strip);
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.extras-hero-title {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ps-text-primary);
+    letter-spacing: 0.2px;
+    line-height: 1.3;
+}
+
+.extras-hero-sub {
+    display: block;
+    font-size: 10px;
+    color: var(--ps-text-muted);
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+/* Tool card */
+.extra-tool {
+    background-color: var(--ps-bg-secondary);
+    border: 1px solid var(--ps-border-color);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color 0.2s ease;
+}
+
+.extra-tool:hover {
+    border-color: var(--ps-border-light);
+}
+
+/* Tool header row */
+.extra-tool-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.extra-tool-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.extra-tool-icon--purple {
+    background-color: rgba(108, 63, 200, 0.15);
+    color: var(--ps-accent-strip);
+    border: 1px solid rgba(108, 63, 200, 0.25);
+}
+
+.extra-tool-icon--blue {
+    background-color: rgba(0, 120, 212, 0.12);
+    color: var(--ps-accent-primary);
+    border: 1px solid rgba(0, 120, 212, 0.2);
+}
+
+.extra-tool-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+}
+
+.extra-tool-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ps-text-primary);
+    line-height: 1.3;
+}
+
+.extra-tool-desc {
+    font-size: 10px;
+    color: var(--ps-text-muted);
+    line-height: 1.5;
+}
+
+.extra-tool-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--ps-accent-strip);
+    background-color: rgba(108, 63, 200, 0.12);
+    border: 1px solid rgba(108, 63, 200, 0.25);
+    border-radius: 4px;
+    padding: 2px 6px;
+    flex-shrink: 0;
+    align-self: flex-start;
+}
+
+/* Flow steps (inline) */
+.extra-tool-flow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    background-color: var(--ps-bg-tertiary);
+    border-radius: 6px;
+    border: 1px solid var(--ps-border-color);
+}
+
+.flow-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--ps-text-secondary);
+    line-height: 1.3;
+}
+
+.flow-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: var(--ps-accent-strip);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.flow-arrow {
+    color: var(--ps-text-muted);
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+/* Tool button */
+.extra-tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-primary);
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 0.1px;
+}
+
+.extra-tool-btn--purple {
+    background-color: var(--ps-accent-strip);
+    color: #ffffff;
+}
+
+.extra-tool-btn--purple:hover {
+    background-color: var(--ps-accent-strip-hover);
+    box-shadow: 0 3px 10px rgba(108, 63, 200, 0.35);
+    transform: translateY(-1px);
+}
+
+.extra-tool-btn--purple:active { transform: translateY(0); }
+
+.extra-tool-btn--purple:disabled {
+    background-color: var(--ps-bg-hover);
+    color: var(--ps-text-muted);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.extra-tool-btn--blue {
+    background-color: transparent;
+    color: var(--ps-accent-primary);
+    border: 1px solid var(--ps-accent-primary);
+}
+
+.extra-tool-btn--blue:hover {
+    background-color: rgba(0, 120, 212, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 120, 212, 0.2);
+    transform: translateY(-1px);
+}
+
+.extra-tool-btn--blue:active { transform: translateY(0); }
+
+.extra-tool-btn--blue:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Status inline */
+.extra-tool-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background-color: var(--ps-bg-tertiary);
+    border-radius: 6px;
+    border: 1px solid var(--ps-border-color);
+    font-size: 11px;
+    color: var(--ps-text-primary);
+    font-weight: 500;
+}
+
+.extra-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--ps-border-color);
+    border-top-color: var(--ps-accent-strip);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+/* Footnote */
+.extras-footnote {
+    font-size: 10px;
+    color: var(--ps-text-muted);
+    line-height: 1.6;
+    text-align: center;
+    padding: 8px 4px 4px;
+}
+
+
+
 .cleaner-actions {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
-

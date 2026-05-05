@@ -25,7 +25,7 @@
                     <span class="logo-subtitle">TOOLS</span>
                 </div>
             </div>
-            <div class="version">v1.2.0</div>
+            <div class="version">v1.3.0</div>
         </header>
 
         <!-- Tab Navigation -->
@@ -325,27 +325,92 @@
 
             <!-- Extras Tab Panel -->
             <div class="tab-panel" id="tab-extras">
-                <div class="cleaner-container">
-                    <div class="cleaner-header">
-                        <h2 class="cleaner-title">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/>
-                            </svg>
-                            Conversor TPL a TypeR
-                        </h2>
-                        <p class="cleaner-description">
-                            Selecciona tus archivos .tpl (Tool Presets) de Photoshop para convertirlos a formato TypeR_Export.json. Cada archivo .tpl será una carpeta.
-                        </p>
+                <div class="extras-scroll">
+
+                    <!-- Hero intro -->
+                    <div class="extras-hero">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" class="extras-hero-icon">
+                            <path d="M13.73 15l2.25 2.25c.39.39 1.02.39 1.41 0l3.18-3.18c.39-.39.39-1.02 0-1.41L18.32 10.4l-4.59 4.6zM10.4 18.32l4.6-4.59-2.25-2.25-4.59 4.6c-.39.39-.39 1.02 0 1.41l3.18 3.18c.39.39 1.02.39 1.41 0zM19.03 3.51L16.49 1H7.51L4.97 3.51V12.5l2.54 2.54h8.98l2.54-2.54V3.51z"/>
+                        </svg>
+                        <div>
+                            <span class="extras-hero-title">Herramientas Extra</span>
+                            <span class="extras-hero-sub">Utilidades de soporte para el flujo de scanlation</span>
+                        </div>
                     </div>
-                    
-                    <div class="cleaner-actions">
-                        <button id="convertTplBtn" class="btn btn-secondary" title="Seleccionar archivos .tpl y generar JSON en el escritorio">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+
+                    <!-- Tool 1: Upscale IA -->
+                    <div class="extra-tool">
+                        <div class="extra-tool-header">
+                            <div class="extra-tool-icon extra-tool-icon--purple">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6z"/>
+                                </svg>
+                            </div>
+                            <div class="extra-tool-meta">
+                                <span class="extra-tool-name">Mejorador de Calidad</span>
+                                <span class="extra-tool-desc">Elimina ruido y recupera detalle con Real-ESRGAN en la nube, sin usar tu computador</span>
+                            </div>
+                            <span class="extra-tool-badge">IA</span>
+                        </div>
+
+                        <div class="extra-tool-flow">
+                            <div class="flow-step">
+                                <span class="flow-dot">1</span>
+                                <span>Abre la tira en Photoshop</span>
+                            </div>
+                            <div class="flow-arrow">›</div>
+                            <div class="flow-step">
+                                <span class="flow-dot">2</span>
+                                <span>Haz clic en Mejorar</span>
+                            </div>
+                            <div class="flow-arrow">›</div>
+                            <div class="flow-step">
+                                <span class="flow-dot">3</span>
+                                <span>Resultado como capa nueva</span>
+                            </div>
+                        </div>
+
+                        <button id="upscaleWithAIBtn" class="extra-tool-btn extra-tool-btn--purple">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6z"/>
+                            </svg>
+                            Mejorar con IA
+                        </button>
+
+                        <div id="upscaleStatus" class="extra-tool-status" style="display:none;">
+                            <div class="extra-spinner"></div>
+                            <span id="upscaleStatusText">Procesando...</span>
+                        </div>
+                    </div>
+
+                    <!-- Tool 2: Conversor TPL -->
+                    <div class="extra-tool">
+                        <div class="extra-tool-header">
+                            <div class="extra-tool-icon extra-tool-icon--blue">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/>
+                                </svg>
+                            </div>
+                            <div class="extra-tool-meta">
+                                <span class="extra-tool-name">Conversor TPL → TypeR</span>
+                                <span class="extra-tool-desc">Convierte presets de pincel .tpl al formato TypeR_Export.json listo para importar</span>
+                            </div>
+                        </div>
+
+                        <button id="convertTplBtn" class="extra-tool-btn extra-tool-btn--blue">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                             </svg>
                             Convertir .TPL a JSON
                         </button>
                     </div>
+
+                    <!-- Nota al pie -->
+                    <p class="extras-footnote">
+                        Las herramientas con IA requieren conexión a internet.<br>
+                        El procesamiento ocurre en servidores externos — tu computador no es afectado.
+                    </p>
+
                 </div>
             </div>
         </div>
