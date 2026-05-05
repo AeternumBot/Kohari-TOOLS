@@ -779,13 +779,29 @@
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         try {
-            // 1. Iniciar inferencia — imagen como data URL base64 directa
+            // 1. Subir JPEG al Space
+            const blob = base64ToBlob(imageBase64, 'image/jpeg');
+            const form = new FormData();
+            form.append('files', blob, 'tira.jpg');
+
+            showUpscaleStatus(true, 'Subiendo imagen al servidor...');
+            const uploadRes = await fetch(`${HF_SPACE}/gradio_api/upload`, {
+                method: 'POST', body: form, signal: controller.signal
+            });
+            if (!uploadRes.ok)
+                throw new Error('Error al subir imagen: HTTP ' + uploadRes.status);
+
+            const uploadData   = await uploadRes.json();
+            const uploadedPath = Array.isArray(uploadData) ? uploadData[0] : uploadData;
+
+            showUpscaleStatus(true, 'Iniciando inferencia...');
+            // 2. Iniciar inferencia con el path subido
             const callRes = await fetch(`${HF_SPACE}/gradio_api/call/run`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     data: [{
-                        url:       'data:image/jpeg;base64,' + imageBase64,
+                        path:      uploadedPath,
                         orig_name: 'tira.jpg',
                         mime_type: 'image/jpeg',
                         meta:      { _type: 'gradio.FileData' }
