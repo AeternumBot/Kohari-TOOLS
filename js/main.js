@@ -650,9 +650,9 @@
     // ============================================
 
     const UPSCALE_CONFIG = {
-        HF_SPACE:   'https://valkkkk-kohari-tools-upscaler.hf.space',
+        HF_SPACE:   'https://nick088-real-esrgan-pytorch.hf.space',
         SCALE:      2,       // ×2: el resultado se reduce de vuelta al tamaño original
-        TIMEOUT_MS: 300000   // 5 min — tiras largas pueden tardar
+        TIMEOUT_MS: 120000   // 2 min — con GPU debería tardar ~10s por bloque
     };
 
     function showUpscaleStatus(show, text) {
@@ -772,11 +772,13 @@
             if (!pasteResult.success)
                 throw new Error('No se pudo pegar: ' + (pasteResult.error || 'desconocido'));
 
-            // 7. Limpiar temporal
+            // 7. Limpiar temporales
             try {
-                const isWin   = navigator.appVersion.indexOf('Win') !== -1;
-                const delPath = isWin ? upFilePathWin : upFilePath;
-                window.cep.fs.deleteFile(delPath);
+                for (const p of upscaledPaths) {
+                    const isWin = navigator.appVersion.indexOf('Win') !== -1;
+                    const delPath = isWin ? p.replace(/\//g, '\\') : p;
+                    window.cep.fs.deleteFile(delPath);
+                }
             } catch (e) { /* no crítico */ }
 
             showUpscaleStatus(false);
@@ -795,23 +797,24 @@
     }
 
     /**
-     * Envía la imagen JPEG a Real-ESRGAN en Hugging Face Spaces (Gradio API).
-     * La imagen entra completa (sin tiling) gracias al formato JPEG que mantiene
-     * el tamaño de archivo manejable incluso en tiras de 25k px.
+     * Envía la imagen JPEG a Real-ESRGAN vía Nick088/Real-ESRGAN_Pytorch (Gradio 4 Queue API).
+     * Usa GPU (NVIDIA A10G) para procesamiento ultra-rápido (~10s por bloque).
+     *
+     * Flujo Gradio 4 Queue:
+     * 1. POST /upload         → sube archivo, devuelve path temporal
+     * 2. POST /queue/join     → encola trabajo con fn_index y session_hash
+     * 3. GET  /queue/data     → SSE stream: estimation → process_starts → process_completed
+     *
      * @param {string} imageBase64 - Base64 del JPEG (sin prefijo data:)
-     * @param {number} scale       - Factor de escala (2)
+     * @param {number} scale       - Factor de escala (2, 4, 8)
+     * @param {string} prefixText  - Texto de prefijo para el status
      * @returns {Promise<string>}  - Data URL de la imagen escalada
-     */
-    /**
-     * API confirmada del Space Valkkkk/kohari-tools-upscaler.
-     * El campo "url" acepta base64 directamente — sin upload separado.
-     * 1. POST /gradio_api/call/v2/run  { image: { url: "data:image/jpeg;base64,..." } } → EVENT_ID
-     * 2. GET  /gradio_api/call/run/{EVENT_ID} → SSE stream con resultado
      */
     async function upscaleWithRealESRGAN(imageBase64, scale, prefixText = '') {
         const { HF_SPACE, TIMEOUT_MS } = UPSCALE_CONFIG;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const sessionHash = 'kohari_' + Math.random().toString(36).substr(2, 9);
 
         try {
             // 1. Subir JPEG al Space
@@ -820,7 +823,7 @@
             form.append('files', blob, 'tira.jpg');
 
             showUpscaleStatus(true, `${prefixText} Subiendo al servidor...`);
-            const uploadRes = await fetch(`${HF_SPACE}/gradio_api/upload`, {
+            const uploadRes = await fetch(`${HF_SPACE}/upload`, {
                 method: 'POST', body: form, signal: controller.signal
             });
             if (!uploadRes.ok)
@@ -829,48 +832,49 @@
             const uploadData   = await uploadRes.json();
             const uploadedPath = Array.isArray(uploadData) ? uploadData[0] : uploadData;
 
-            showUpscaleStatus(true, `${prefixText} Iniciando inferencia...`);
-            // 2. Iniciar inferencia con el path subido
-            const callRes = await fetch(`${HF_SPACE}/gradio_api/call/run`, {
+            // 2. Encolar trabajo en la GPU
+            showUpscaleStatus(true, `${prefixText} Encolando en GPU...`);
+            const joinRes = await fetch(`${HF_SPACE}/queue/join`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    data: [{
-                        path:      uploadedPath,
-                        orig_name: 'tira.jpg',
-                        mime_type: 'image/jpeg',
-                        meta:      { _type: 'gradio.FileData' }
-                    }]
+                    data: [
+                        { path: uploadedPath, meta: { _type: 'gradio.FileData' } },
+                        scale
+                    ],
+                    fn_index: 0,
+                    session_hash: sessionHash
                 }),
                 signal: controller.signal
             });
-            if (!callRes.ok)
-                throw new Error('Error al iniciar proceso: HTTP ' + callRes.status);
+            if (!joinRes.ok)
+                throw new Error('Error al encolar proceso: HTTP ' + joinRes.status);
 
-            const callData = await callRes.json();
-            const event_id = callData.event_id || callData.eventId;
-            if (!event_id) throw new Error('No se recibió event_id del servidor.');
+            const joinData = await joinRes.json();
+            if (!joinData.event_id)
+                throw new Error('No se recibió event_id del servidor.');
 
-            // 2. Leer SSE como stream
-            const sseRes = await fetch(`${HF_SPACE}/gradio_api/call/run/${event_id}`, {
-                signal: controller.signal
-            });
+            // 3. Leer SSE del stream de resultados
+            showUpscaleStatus(true, `${prefixText} Esperando GPU...`);
+            const sseRes = await fetch(
+                `${HF_SPACE}/queue/data?session_hash=${sessionHash}`,
+                { signal: controller.signal }
+            );
             if (!sseRes.ok)
-                throw new Error('Error al conectar con resultado: HTTP ' + sseRes.status);
+                throw new Error('Error al conectar con stream: HTTP ' + sseRes.status);
 
             const result = await new Promise((resolve, reject) => {
                 const reader  = sseRes.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer    = '';
-                let lastEvent = '';
                 let elapsed   = 0;
 
                 const tick = setInterval(() => {
                     elapsed += 2;
-                    showUpscaleStatus(true, `${prefixText} Procesando en servidor… ` + elapsed + 's');
+                    showUpscaleStatus(true, `${prefixText} Procesando en GPU… ${elapsed}s`);
                 }, 2000);
 
-                function processChunk() {
+                function processSSE() {
                     reader.read().then(({ done, value }) => {
                         if (done) {
                             clearInterval(tick);
@@ -884,41 +888,46 @@
 
                         for (const line of lines) {
                             const trimmed = line.trim();
-                            if (trimmed.startsWith('event:')) {
-                                lastEvent = trimmed.replace('event:', '').trim();
-                            } else if (trimmed.startsWith('data:')) {
-                                const raw = trimmed.replace('data:', '').trim();
-                                if (lastEvent === 'error') {
+                            if (!trimmed.startsWith('data:')) continue;
+                            const raw = trimmed.replace(/^data:\s*/, '');
+
+                            try {
+                                const parsed = JSON.parse(raw);
+
+                                if (parsed.msg === 'process_completed') {
                                     clearInterval(tick);
-                                    try {
-                                        const e = JSON.parse(raw);
-                                        reject(new Error('Error del modelo: ' + (e.message || raw)));
-                                    } catch (_) {
-                                        reject(new Error('Error del modelo: ' + raw));
+                                    if (parsed.output && parsed.output.data && parsed.output.data.length > 0) {
+                                        resolve(parsed.output.data[0]);
+                                    } else if (parsed.output && parsed.output.error) {
+                                        reject(new Error('Error del modelo: ' + parsed.output.error));
+                                    } else {
+                                        reject(new Error('Respuesta inesperada del servidor.'));
                                     }
                                     return;
                                 }
-                                if (lastEvent === 'complete') {
-                                    try {
-                                        const parsed = JSON.parse(raw);
-                                        if (Array.isArray(parsed) && parsed.length > 0) {
-                                            clearInterval(tick);
-                                            resolve(parsed[0]);
-                                            return;
-                                        }
-                                    } catch (_) {}
+                                if (parsed.msg === 'queue_full') {
+                                    clearInterval(tick);
+                                    reject(new Error('La cola de GPU está llena. Intenta de nuevo en unos segundos.'));
+                                    return;
                                 }
-                            }
+                                if (parsed.msg === 'process_starts') {
+                                    showUpscaleStatus(true, `${prefixText} ¡GPU procesando!`);
+                                }
+                                if (parsed.msg === 'estimation') {
+                                    const pos = parsed.rank != null ? parsed.rank : '?';
+                                    showUpscaleStatus(true, `${prefixText} En cola… posición ${pos}`);
+                                }
+                            } catch (_) { /* línea no-JSON, ignorar */ }
                         }
 
-                        processChunk();
+                        processSSE();
                     }).catch((err) => {
                         clearInterval(tick);
                         reject(err);
                     });
                 }
 
-                processChunk();
+                processSSE();
             });
 
             clearTimeout(timer);
@@ -934,8 +943,9 @@
 
             const finalUrl = imageUrl.startsWith('http')
                 ? imageUrl
-                : `${HF_SPACE}/gradio_api/file=${imageUrl.replace(/^(file=|\/)+/g, '')}`;
+                : `${HF_SPACE}/file=${imageUrl.replace(/^(file=|\/)+/g, '')}`;
 
+            showUpscaleStatus(true, `${prefixText} Descargando resultado...`);
             const imgRes = await fetch(finalUrl, { signal: controller.signal });
             if (!imgRes.ok) throw new Error('No se pudo descargar la imagen resultado.');
 
