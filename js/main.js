@@ -690,7 +690,7 @@
             if (!exportResult.success)
                 throw new Error('No se pudo exportar: ' + (exportResult.error || 'desconocido'));
 
-            const { imagePath, originalWidth, originalHeight } = exportResult;
+            const { imagePath, originalWidth, originalHeight, docName } = exportResult;
 
             // 3. Leer JPEG como base64 y cargar en un objeto Image
             showUpscaleStatus(true, 'Cargando imagen para dividir...');
@@ -767,7 +767,7 @@
             // 6. Ensamblar en Photoshop
             showUpscaleStatus(true, 'Ensamblando bloques en Photoshop...');
             const pasteResult = await api.pasteUpscaledTiles(
-                upscaledPaths, originalWidth, originalHeight, exportIndex, CHUNK_HEIGHT
+                upscaledPaths, originalWidth, originalHeight, exportIndex, CHUNK_HEIGHT, docName
             );
             if (!pasteResult.success)
                 throw new Error('No se pudo pegar: ' + (pasteResult.error || 'desconocido'));

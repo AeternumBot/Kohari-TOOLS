@@ -449,11 +449,13 @@
          * @param {number} index - Índice único
          * @param {number} chunkHeight - Alto original de cada chunk (sin escala)
          */
-        async pasteUpscaledTiles(pathsArray, targetWidth, targetHeight, index, chunkHeight) {
+        async pasteUpscaledTiles(pathsArray, targetWidth, targetHeight, index, chunkHeight, docName) {
             try {
                 const pathsStr = pathsArray.map(p => p.replace(/\\/g, '/')).join("|||");
+                // Escapar comillas en el nombre del documento por si acaso
+                const safeDocName = docName.replace(/"/g, '\\"');
                 const raw = await this.execScript(
-                    `pasteUpscaledTiles("${pathsStr}", ${targetWidth}, ${targetHeight}, ${index}, ${chunkHeight})`
+                    `pasteUpscaledTiles("${pathsStr}", ${targetWidth}, ${targetHeight}, ${index}, ${chunkHeight}, "${safeDocName}")`
                 );
                 return JSON.parse(raw);
             } catch (e) {

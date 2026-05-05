@@ -164,7 +164,7 @@ function exportFullDocument(tempPath, index) {
         dupDoc.close(SaveOptions.DONOTSAVECHANGES);
 
         app.displayDialogs = prevDialogs;
-        return '{"success": true, "imagePath": "' + filePath + '", "originalWidth": ' + originalWidth + ', "originalHeight": ' + originalHeight + '}';
+        return '{"success": true, "imagePath": "' + filePath + '", "docName": "' + doc.name + '", "originalWidth": ' + originalWidth + ', "originalHeight": ' + originalHeight + '}';
     } catch (e) {
         app.displayDialogs = prevDialogs;
         return '{"success": false, "error": "exportFullDocument: ' + escapeJSON(e) + '"}';
@@ -216,12 +216,20 @@ function pasteAndResizeUpscaled(imagePath, targetWidth, targetHeight, index) {
     }
 }
 
-function pasteUpscaledTiles(pathsStr, targetWidth, targetHeight, index, chunkHeightRaw) {
+function pasteUpscaledTiles(pathsStr, targetWidth, targetHeight, index, chunkHeightRaw, docName) {
     var prevDialogs = app.displayDialogs;
     app.displayDialogs = DialogModes.NO;
     try {
         var paths = pathsStr.split("|||");
-        var doc = app.activeDocument;
+        
+        // Buscar el documento original por nombre para evitar pegar en el equivocado si el usuario cambió de pestaña
+        var doc;
+        try {
+            doc = app.documents.getByName(docName);
+            app.activeDocument = doc; // Traerlo al frente
+        } catch(e) {
+            doc = app.activeDocument; // Fallback
+        }
         
         // Crear un grupo para contener todas las piezas
         var group = doc.layerSets.add();
