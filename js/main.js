@@ -475,6 +475,8 @@
      * Inicia el proceso de conversión de TPL a JSON
      */
     async function handleConvertTPL() {
+        const api = window.KohariPhotoshop.api;
+        
         if (state.isProcessing) return;
 
         try {
@@ -506,21 +508,30 @@
             const response = await api.convertTPLsToJSON(filePathsStr);
             
             if (response.success) {
-                const desktopPath = window.cep.fs.getSystemPath(window.cep.fs.SystemPath.USER_DATA).replace(/AppData.*/i, 'Desktop');
+                // Mostrar diálogo para guardar (PS abrirá en ubicación por defecto)
                 const saveResult = window.cep.fs.showSaveDialogEx(
                     'Guardar TypeR_Export.json',
-                    desktopPath,
+                    '', // path inicial vacío = PS elige ubicación por defecto
                     ['json'],
                     'TypeR_Export.json',
                     ''
                 );
 
                 if (saveResult.err === 0 && saveResult.data) {
-                    window.cep.fs.writeFile(saveResult.data, response.jsonStr);
-                    alert('¡Conversión exitosa! Archivo guardado en:\\n' + saveResult.data);
+                    // Guardar el archivo
+                    const writeResult = window.cep.fs.writeFile(saveResult.data, response.jsonStr);
+                    
+                    if (writeResult.err === 0) {
+                        alert('¡Conversión exitosa! Archivo guardado en:\n' + saveResult.data);
+                    } else {
+                        alert('Error al guardar el archivo: ' + writeResult.err);
+                    }
+                } else if (saveResult.err !== 0) {
+                    // Usuario canceló o hubo error en el diálogo
+                    console.log('[Kohari] Usuario canceló el guardado o error:', saveResult.err);
                 }
             } else {
-                alert('Error al convertir: ' + response.error);
+                alert('Error al convertir TPL:\n\n' + response.error + '\n\nVerifica que los archivos .tpl contengan presets de texto válidos.');
             }
 
         } catch (error) {

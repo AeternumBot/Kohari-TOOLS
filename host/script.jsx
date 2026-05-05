@@ -133,36 +133,176 @@ function saveAndPasteBase64Image(b64FilePath, tempPath, index, cropLeft, cropTop
     }
 }
 
-// --- LIMPIEZA DE BURBUJAS (ULTRA-SAFE) ---
-
+// --- LIMPIEZA DE BURBUJAS ---
 function fillBubblesWhite() {
     var prevDialogs = app.displayDialogs;
     app.displayDialogs = DialogModes.NO;
+    var tempLayer = null;
     try {
         if (app.documents.length === 0) return '{"success": false, "error": "No hay documento"}';
         var doc = app.activeDocument;
         try {
             if (doc.selection.bounds[2] - doc.selection.bounds[0] <= 0) throw new Error();
-        } catch (e) { return '{"success": false, "error": "No hay selección activa"}'; }
+        } catch (e) { return '{"success": false, "error": "No hay seleccion activa"}'; }
 
-        var white = new SolidColor();
-        white.rgb.red = white.rgb.green = white.rgb.blue = 255;
-        
+        // === Replica exacta del flujo de la acción Bubble_Mask.atn ===
+        //
+        // La acción NO usa expand/contract directamente sobre la selección.
+        // En su lugar:
+        //   1. Contrae 2px para afinar el borde de la selección inicial
+        //   2. Crea una capa negra temporal dentro de la selección
+        //   3. Usa "Rango de Color > Iluminaciones" (invertido) para detectar
+        //      los píxeles blancos del interior del globo IGNORANDO las letras
+        //   4. Contrae 25px x2 (= 50px total) para meterse dentro del borde negro del globo
+        //   5. Grow (Extender) tolerancia 3 para expandir comiendo el blanco
+        //   6. Borra la capa temporal
+        //   7. Invierte la selección
+        //   8. Desvanece 1px
+        //   9. Crea la capa de relleno blanco final
+
+        // --- Paso 1: Contraer 2px la selección inicial ---
+        try { doc.selection.contract(2); } catch(e) {}
+
+        // --- Paso 2: Crear capa blanca temporal (solidColorLayer) ---
+        // Usamos el descriptor de acción de baja nivel igual que el .atn
+        var idMk = charIDToTypeID("Mk  ");
+        var desc1 = new ActionDescriptor();
+        var ref1 = new ActionReference();
+        ref1.putClass(stringIDToTypeID("contentLayer"));
+        desc1.putReference(charIDToTypeID("null"), ref1);
+        var desc2 = new ActionDescriptor();
+        var desc3 = new ActionDescriptor();
+        var desc4 = new ActionDescriptor();
+        desc4.putDouble(charIDToTypeID("Rd  "), 255.0);
+        desc4.putDouble(charIDToTypeID("Grn "), 255.0);
+        desc4.putDouble(charIDToTypeID("Bl  "), 255.0);
+        desc3.putObject(charIDToTypeID("Clr "), charIDToTypeID("RGBC"), desc4);
+        desc2.putObject(charIDToTypeID("Type"), stringIDToTypeID("solidColorLayer"), desc3);
+        desc1.putObject(charIDToTypeID("Usng"), stringIDToTypeID("contentLayer"), desc2);
+        executeAction(idMk, desc1, DialogModes.NO);
+
+        tempLayer = doc.activeLayer;
+        tempLayer.name = 'Kohari_Temp_White';
+
+        // Rasterizar la capa de relleno (igual que el .atn)
+        var descR = new ActionDescriptor();
+        var refR = new ActionReference();
+        refR.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        descR.putReference(charIDToTypeID("null"), refR);
+        descR.putEnumerated(stringIDToTypeID("what"), stringIDToTypeID("rasterizeItem"), stringIDToTypeID("content"));
+        executeAction(stringIDToTypeID("rasterizeLayer"), descR, DialogModes.NO);
+
+        // Eliminar la máscara de capa si existe (igual que el .atn hace Dlt canal Msk)
         try {
-            doc.selection.expand(2);   
-            doc.selection.smooth(4);   
-            doc.selection.contract(3); 
-        } catch (selErr) {}
+            var descDM = new ActionDescriptor();
+            var refDM = new ActionReference();
+            refDM.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));
+            descDM.putReference(charIDToTypeID("null"), refDM);
+            descDM.putBoolean(stringIDToTypeID("apply"), true);
+            executeAction(charIDToTypeID("Dlt "), descDM, DialogModes.NO);
+        } catch(e) {}
 
-        var newLayer = doc.artLayers.add();
-        newLayer.name = 'Kohari_BubbleFill';
-        doc.selection.fill(white);
+        // Deseleccionar (set fsel = None)
+        var descDS = new ActionDescriptor();
+        var refDS = new ActionReference();
+        refDS.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
+        descDS.putReference(charIDToTypeID("null"), refDS);
+        descDS.putEnumerated(charIDToTypeID("T   "), charIDToTypeID("Ordn"), charIDToTypeID("None"));
+        executeAction(charIDToTypeID("setd"), descDS, DialogModes.NO);
+
+        // Mostrar la capa
+        var descSh = new ActionDescriptor();
+        var listSh = new ActionList();
+        var refSh = new ActionReference();
+        refSh.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        listSh.putReference(refSh);
+        descSh.putList(charIDToTypeID("null"), listSh);
+        descSh.putBoolean(stringIDToTypeID("toggleOther"), true);
+        executeAction(charIDToTypeID("Shw "), descSh, DialogModes.NO);
+
+        // --- Paso 3: Rango de color > Iluminaciones invertidas ---
+        var descCR = new ActionDescriptor();
+        descCR.putEnumerated(charIDToTypeID("Clrs"), charIDToTypeID("Clrs"), charIDToTypeID("Hghl")); // Highlights
+        descCR.putBoolean(charIDToTypeID("Invr"), true); // Invertir
+        executeAction(charIDToTypeID("ClrR"), descCR, DialogModes.NO);
+
+        // --- Paso 4: Contraer 25px × 2 = 50px para alejarse del borde ---
+        try { doc.selection.contract(25); } catch(e) {}
+        try { doc.selection.contract(25); } catch(e) {}
+
+        // --- Paso 5: Grow (Extender) tolerancia 3, con antialias ---
+        var descGrow = new ActionDescriptor();
+        var refGrow = new ActionReference();
+        refGrow.putProperty(charIDToTypeID("Chnl"), charIDToTypeID("fsel"));
+        descGrow.putReference(charIDToTypeID("null"), refGrow);
+        descGrow.putInteger(charIDToTypeID("Tlrn"), 3);
+        descGrow.putBoolean(charIDToTypeID("AntA"), true);
+        executeAction(charIDToTypeID("Grow"), descGrow, DialogModes.NO);
+
+        // --- Paso 6: Eliminar la capa temporal ---
+        var descDel = new ActionDescriptor();
+        var refDel = new ActionReference();
+        refDel.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        descDel.putReference(charIDToTypeID("null"), refDel);
+        executeAction(charIDToTypeID("Dlt "), descDel, DialogModes.NO);
+        tempLayer = null;
+
+        // --- Paso 7: Invertir la selección ---
+        executeAction(stringIDToTypeID("inverse"), new ActionDescriptor(), DialogModes.NO);
+
+        // --- Paso 8: Desvanecer 1px ---
+        try { doc.selection.feather(1); } catch(e) {}
+
+        // --- Paso 9: Crear capa de relleno blanco final ---
+        var idMk2 = charIDToTypeID("Mk  ");
+        var desc5 = new ActionDescriptor();
+        var ref5 = new ActionReference();
+        ref5.putClass(stringIDToTypeID("contentLayer"));
+        desc5.putReference(charIDToTypeID("null"), ref5);
+        var desc6 = new ActionDescriptor();
+        var desc7 = new ActionDescriptor();
+        var desc8 = new ActionDescriptor();
+        desc8.putDouble(charIDToTypeID("Rd  "), 255.0);
+        desc8.putDouble(charIDToTypeID("Grn "), 255.0);
+        desc8.putDouble(charIDToTypeID("Bl  "), 255.0);
+        desc7.putObject(charIDToTypeID("Clr "), charIDToTypeID("RGBC"), desc8);
+        desc6.putObject(charIDToTypeID("Type"), stringIDToTypeID("solidColorLayer"), desc7);
+        desc5.putObject(charIDToTypeID("Usng"), stringIDToTypeID("contentLayer"), desc6);
+        executeAction(idMk2, desc5, DialogModes.NO);
+
+        var fillLayer = doc.activeLayer;
+        fillLayer.name = 'Kohari_BubbleFill';
+
+        // Rasterizar la capa de relleno
+        var descR2 = new ActionDescriptor();
+        var refR2 = new ActionReference();
+        refR2.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        descR2.putReference(charIDToTypeID("null"), refR2);
+        descR2.putEnumerated(stringIDToTypeID("what"), stringIDToTypeID("rasterizeItem"), stringIDToTypeID("content"));
+        executeAction(stringIDToTypeID("rasterizeLayer"), descR2, DialogModes.NO);
+
+        // Eliminar máscara si existe
+        try {
+            var descDM2 = new ActionDescriptor();
+            var refDM2 = new ActionReference();
+            refDM2.putEnumerated(charIDToTypeID("Chnl"), charIDToTypeID("Chnl"), charIDToTypeID("Msk "));
+            descDM2.putReference(charIDToTypeID("null"), refDM2);
+            descDM2.putBoolean(stringIDToTypeID("apply"), true);
+            executeAction(charIDToTypeID("Dlt "), descDM2, DialogModes.NO);
+        } catch(e) {}
+
+        // Deseleccionar al final
         doc.selection.deselect();
-        
+
         app.displayDialogs = prevDialogs;
         return '{"success": true, "layerName": "Kohari_BubbleFill"}';
     } catch (e) {
-        app.displayDialogs = prevDialogs;
+        // Limpiar la capa temporal si algo falló a mitad
+        if (tempLayer) {
+            try { tempLayer.remove(); } catch(e2) {}
+        }
+        try { app.displayDialogs = DialogModes.ALL; } catch(e2) {}
         return '{"success": false, "error": "fillBubblesWhite: ' + escapeJSON(e) + '"}';
     }
 }
+

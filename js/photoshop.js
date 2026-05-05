@@ -370,19 +370,20 @@
          */
         async convertTPLsToJSON(filePathsStr) {
             try {
-                let extensionPath = '';
-                if (window.__adobe_cep__) {
-                    extensionPath = window.__adobe_cep__.getExtensionPath();
-                } else if (window.cep) {
-                    extensionPath = window.cep.fs.getSystemPath(window.cep.fs.SystemPath.EXTENSION);
+                // Usar CSInterface para obtener el path de la extensión
+                const extensionPath = this.csInterface.getSystemPath('extension').replace(/\\/g, '/');
+                if (!extensionPath) {
+                    return { success: false, error: 'No se pudo obtener el path de la extensión' };
                 }
-                
-                // Normalizar path
-                extensionPath = extensionPath.replace(/\\/g, '/');
                 
                 // Primero evaluamos el script export_tpl.jsx para que las funciones estén disponibles
                 const scriptPath = extensionPath + '/host/export_tpl.jsx';
-                await this.execScript(`$.evalFile("${scriptPath}")`);
+                
+                try {
+                    await this.execScript(`$.evalFile("${scriptPath}")`);
+                } catch(evalErr) {
+                    return { success: false, error: 'No se pudo cargar export_tpl.jsx. Verifica que el archivo existe en: ' + scriptPath };
+                }
 
                 // Luego llamamos a la función
                 const raw = await this.execScript(`processTPLFiles("${filePathsStr.replace(/\\/g, '\\\\')}")`);
@@ -391,13 +392,13 @@
                 try {
                     const parsed = JSON.parse(raw);
                     if (parsed.error) return { success: false, error: parsed.error };
-                    return { success: true, jsonStr: raw }; // Devolvemos el string crudo para guardarlo
+                    return { success: true, jsonStr: raw };
                 } catch(e) {
-                    return { success: false, error: 'Respuesta inválida del script TPL: ' + raw.substring(0, 50) };
+                    return { success: false, error: 'El script retornó una respuesta inválida. Primeros caracteres: ' + raw.substring(0, 100) };
                 }
                 
             } catch (e) {
-                return { success: false, error: e.message };
+                return { success: false, error: 'Error inesperado: ' + e.message };
             }
         }
 
