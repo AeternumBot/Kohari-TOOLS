@@ -650,7 +650,7 @@
     // ============================================
 
     const UPSCALE_CONFIG = {
-        HF_SPACE:   'https://ai-forever-real-esrgan.hf.space',
+        HF_SPACE:   'https://valkkkk-kohari-tools-upscaler.hf.space',
         SCALE:      2,       // ×2: el resultado se reduce de vuelta al tamaño original
         TIMEOUT_MS: 300000   // 5 min — tiras largas pueden tardar
     };
