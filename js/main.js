@@ -75,6 +75,10 @@
             convertTplBtn:  document.getElementById('convertTplBtn'),
             aiStatus:       document.getElementById('aiStatus'),
             aiStatusText:   document.getElementById('aiStatusText'),
+            // Upscale IA elements
+            upscaleWithAIBtn:  document.getElementById('upscaleWithAIBtn'),
+            upscaleStatus:     document.getElementById('upscaleStatus'),
+            upscaleStatusText: document.getElementById('upscaleStatusText'),
         };
     }
 
@@ -222,6 +226,7 @@
         if (elements.cleanWithAIBtn) elements.cleanWithAIBtn.addEventListener('click', handleCleanWithAI);
         if (elements.cleanBubblesBtn) elements.cleanBubblesBtn.addEventListener('click', handleFillBubblesWhite);
         if (elements.convertTplBtn) elements.convertTplBtn.addEventListener('click', handleConvertTPL);
+        if (elements.upscaleWithAIBtn) elements.upscaleWithAIBtn.addEventListener('click', handleUpscaleWithAI);
 
         if (elements.languageInputs) {
             elements.languageInputs.forEach(input => {
@@ -637,6 +642,207 @@
         }
         if (elements.aiStatusText && text) {
             elements.aiStatusText.textContent = text;
+        }
+    }
+
+    // ============================================
+    // UPSCALE CON IA — REAL-ESRGAN (HF SPACES)
+    // ============================================
+
+    const UPSCALE_CONFIG = {
+        HF_SPACE:   'https://ai-forever-real-esrgan.hf.space',
+        SCALE:      2,       // ×2: el resultado se reduce de vuelta al tamaño original
+        TIMEOUT_MS: 300000   // 5 min — tiras largas pueden tardar
+    };
+
+    function showUpscaleStatus(show, text) {
+        if (elements.upscaleStatus)
+            elements.upscaleStatus.style.display = show ? 'flex' : 'none';
+        if (elements.upscaleStatusText && text !== undefined)
+            elements.upscaleStatusText.textContent = text;
+    }
+
+    async function handleUpscaleWithAI() {
+        if (state.isProcessing) { showToast('Ya se está procesando...', 'warning'); return; }
+
+        if (!window.KohariPhotoshop || !window.KohariPhotoshop.isAvailable()) {
+            showToast('Photoshop no detectado. Abre el panel desde Photoshop.', 'error');
+            return;
+        }
+
+        const api = window.KohariPhotoshop.api;
+
+        try {
+            state.isProcessing = true;
+            elements.upscaleWithAIBtn.disabled = true;
+            showUpscaleStatus(true, 'Verificando documento...');
+
+            // 1. Verificar documento abierto
+            const docCheck = await api.checkDocument();
+            if (!docCheck.hasDocument)
+                throw new Error('No hay documento abierto en Photoshop.');
+
+            // 2. Exportar documento aplanado como JPEG
+            showUpscaleStatus(true, 'Exportando documento...');
+            const tempPath    = api.getTempPath();
+            const exportIndex = Date.now();
+            const exportResult = await api.exportFullDocument(tempPath, exportIndex);
+            if (!exportResult.success)
+                throw new Error('No se pudo exportar: ' + (exportResult.error || 'desconocido'));
+
+            const { imagePath, originalWidth, originalHeight } = exportResult;
+
+            // 3. Leer JPEG como base64
+            showUpscaleStatus(true, 'Cargando imagen...');
+            const imageBase64 = await api.readFileAsBase64(imagePath);
+            if (!imageBase64)
+                throw new Error('No se pudo leer el archivo exportado.');
+
+            // 4. Enviar a Real-ESRGAN ×2 en Hugging Face
+            showUpscaleStatus(true, 'Mejorando calidad con IA… puede tardar 20-60s');
+            let upscaledBase64 = await upscaleWithRealESRGAN(imageBase64, UPSCALE_CONFIG.SCALE);
+
+            if (!upscaledBase64)
+                throw new Error('La IA no devolvió ninguna imagen.');
+            if (upscaledBase64.includes(','))
+                upscaledBase64 = upscaledBase64.split(',')[1];
+
+            // 5. Escribir resultado en disco con cep.fs
+            showUpscaleStatus(true, 'Guardando resultado...');
+            let safePath = tempPath
+                .replace(/^file:\/+/i, '')
+                .replace(/^file:\\+/i, '')
+                .replace(/\\/g, '/')
+                .replace(/\/$/, '');
+            safePath = decodeURIComponent(safePath);
+
+            const upFilePath    = safePath + '/kohari_upscaled_' + exportIndex + '.png';
+            const upFilePathWin = upFilePath.replace(/\//g, '\\');
+
+            if (window.cep && window.cep.fs) {
+                const isWin     = navigator.appVersion.indexOf('Win') !== -1;
+                const writeTo   = isWin ? upFilePathWin : upFilePath;
+                const wr = window.cep.fs.writeFile(writeTo, upscaledBase64, window.cep.encoding.Base64);
+                if (wr.err !== window.cep.fs.NO_ERROR)
+                    throw new Error('No se pudo escribir el archivo resultado: error ' + wr.err);
+            } else {
+                throw new Error('CEP FS no disponible.');
+            }
+
+            // 6. Pegar en PS y redimensionar al tamaño original del documento
+            showUpscaleStatus(true, 'Pegando y ajustando tamaño en Photoshop...');
+            const pasteResult = await api.pasteAndResizeUpscaled(
+                upFilePath, originalWidth, originalHeight, exportIndex
+            );
+            if (!pasteResult.success)
+                throw new Error('No se pudo pegar: ' + (pasteResult.error || 'desconocido'));
+
+            // 7. Limpiar temporal
+            try {
+                const isWin   = navigator.appVersion.indexOf('Win') !== -1;
+                const delPath = isWin ? upFilePathWin : upFilePath;
+                window.cep.fs.deleteFile(delPath);
+            } catch (e) { /* no crítico */ }
+
+            showUpscaleStatus(false);
+            showToast('¡Mejora completada! Capa: ' + pasteResult.layerName, 'success');
+            updateStatus('Upscale completado: "' + pasteResult.layerName + '"', 'ready');
+
+        } catch (err) {
+            console.error('[Kohari Upscale]', err);
+            showUpscaleStatus(false);
+            showToast(err.message, 'error');
+            updateStatus('Error Upscale: ' + err.message, 'error');
+        } finally {
+            state.isProcessing = false;
+            elements.upscaleWithAIBtn.disabled = false;
+        }
+    }
+
+    /**
+     * Envía la imagen JPEG a Real-ESRGAN en Hugging Face Spaces (Gradio API).
+     * La imagen entra completa (sin tiling) gracias al formato JPEG que mantiene
+     * el tamaño de archivo manejable incluso en tiras de 25k px.
+     * @param {string} imageBase64 - Base64 del JPEG (sin prefijo data:)
+     * @param {number} scale       - Factor de escala (2)
+     * @returns {Promise<string>}  - Data URL de la imagen escalada
+     */
+    async function upscaleWithRealESRGAN(imageBase64, scale) {
+        const { HF_SPACE, TIMEOUT_MS } = UPSCALE_CONFIG;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        try {
+            // 1. Subir JPEG al Space
+            const blob = base64ToBlob(imageBase64, 'image/jpeg');
+            const form = new FormData();
+            form.append('files', blob, 'tira.jpg');
+
+            const uploadRes = await fetch(`${HF_SPACE}/gradio_api/upload`, {
+                method: 'POST', body: form, signal: controller.signal
+            });
+            if (!uploadRes.ok)
+                throw new Error('Error al subir imagen al servidor: HTTP ' + uploadRes.status);
+
+            const uploadData   = await uploadRes.json();
+            const uploadedPath = Array.isArray(uploadData) ? uploadData[0] : uploadData;
+
+            // 2. Llamar al modelo
+            const predictRes = await fetch(`${HF_SPACE}/gradio_api/run/predict`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fn_index: 0,
+                    data: [
+                        { path: uploadedPath, orig_name: 'tira.jpg' },
+                        scale
+                    ]
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timer);
+
+            if (!predictRes.ok) {
+                const errText = await predictRes.text().catch(() => '');
+                if (predictRes.status === 503)
+                    throw new Error('Servidor ocupado. Intenta de nuevo en unos segundos.');
+                if (predictRes.status === 413)
+                    throw new Error('Imagen demasiado grande para el servidor (413). Reduce el tamaño del canvas e intenta de nuevo.');
+                throw new Error('Error del servidor: ' + predictRes.status + ' ' + errText);
+            }
+
+            const predictData = await predictRes.json();
+            const resultItem  = predictData.data && predictData.data[0];
+            if (!resultItem) throw new Error('El servidor no devolvió resultado.');
+
+            // Data URL directa
+            if (typeof resultItem === 'string' && resultItem.startsWith('data:'))
+                return resultItem;
+
+            // Ruta relativa o URL — descargar
+            const resultPath = typeof resultItem === 'object'
+                ? (resultItem.url || resultItem.path)
+                : resultItem;
+            const finalUrl = resultPath.startsWith('http')
+                ? resultPath
+                : `${HF_SPACE}/gradio_api/file=${resultPath}`;
+
+            const imgRes = await fetch(finalUrl, { signal: controller.signal });
+            if (!imgRes.ok) throw new Error('No se pudo descargar la imagen resultado.');
+
+            const imgBlob = await imgRes.blob();
+            return await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload  = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('Error leyendo imagen de respuesta.'));
+                reader.readAsDataURL(imgBlob);
+            });
+
+        } catch (err) {
+            clearTimeout(timer);
+            if (err.name === 'AbortError')
+                throw new Error('Timeout: el servidor no respondió en ' + (TIMEOUT_MS / 60000) + ' minutos.');
+            throw err;
         }
     }
 
