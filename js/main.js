@@ -624,7 +624,7 @@
 
         // Intentar con timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10m timeout
+        const timeoutId = setTimeout(() => controller.abort(), 900000); // 15m timeout (CPU puede tardar)
 
         try {
             const response = await fetch(IOPAINT_URL, {
@@ -709,7 +709,7 @@
             HF_TOKEN:   '',      // <--- PEGA TU TOKEN AQUÍ (hf_...)
             TYPE:       'gradio4',
             SCALE:      4,
-            TIMEOUT_MS: 120000
+            TIMEOUT_MS: 180000   // 3 minutos (GPU es rápida)
         },
         FALLBACK: {
             NAME:       'CPU (Ilimitado)',
@@ -717,7 +717,7 @@
             HF_TOKEN:   '',      // <--- PEGA TU TOKEN HF AQUÍ SI LO TIENES (hf_...)
             TYPE:       'gradio5',
             SCALE:      4,
-            TIMEOUT_MS: 300000
+            TIMEOUT_MS: 900000   // 15 minutos (CPU es lento pero confiable)
         }
     };
 
@@ -774,7 +774,7 @@
             });
 
             // 4. Calcular bloques (Tiling)
-            const CHUNK_HEIGHT = 1500;
+            const CHUNK_HEIGHT = 1000;  // Reducido: chunks más pequeños = procesamiento más rápido
             const OVERLAP = 50;
             let currentY = 0;
             let chunks = [];
