@@ -20,8 +20,8 @@
         currentTextType: 'bubble', // 'bubble' | 'OT' | 'ST'
         ocrEngine: 'local', // 'local' | 'gemini'
         apiKey: '',
-        upscaleEngine: 'replicate', // 'replicate' | 'hfgpu' | 'hfcpu'
-        upscaleApiToken: '',
+        upscaleEngine: 'local', // 'local' | 'hfgpu' | 'hfcpu'
+        hfGpuToken: '',
         strips: [{ id: 1, label: 'Tira 1', bubbles: [] }],
         currentStripIndex: 0,
         options: {
@@ -82,7 +82,7 @@
             upscaleStatus:       document.getElementById('upscaleStatus'),
             upscaleStatusText:   document.getElementById('upscaleStatusText'),
             upscaleEngineInputs: document.querySelectorAll('input[name="upscaleEngine"]'),
-            upscaleApiToken:     document.getElementById('upscaleApiToken'),
+            hfGpuToken:          document.getElementById('upscaleApiToken'),
             upscaleTokenContainer: document.getElementById('upscaleTokenContainer'),
         };
     }
@@ -287,11 +287,15 @@
 
         // Upscale engine selector
         if (elements.upscaleEngineInputs) {
-            const UPSCALE_TOKEN_PLACEHOLDERS = {
-                replicate: 'Token r8_... (Replicate)',
-                hfgpu:     'Token hf_... (Hugging Face, opcional)',
-                hfcpu:     ''
+            const updateTokenVisibility = (engine) => {
+                // El token HF solo aplica a los motores de Hugging Face, no al local
+                const needsToken = (engine === 'hfgpu');
+                if (elements.upscaleTokenContainer)
+                    elements.upscaleTokenContainer.style.display = needsToken ? 'flex' : 'none';
+                if (elements.hfGpuToken && needsToken)
+                    elements.hfGpuToken.placeholder = 'Token hf_... (Hugging Face, opcional)';
             };
+
             elements.upscaleEngineInputs.forEach(input => {
                 input.addEventListener('change', (e) => {
                     state.upscaleEngine = e.target.value;
@@ -300,12 +304,7 @@
                     document.querySelectorAll('#upscaleEngineOptions .engine-option').forEach(el => el.classList.remove('selected'));
                     e.target.closest('.engine-option').classList.add('selected');
 
-                    if (state.upscaleEngine === 'hfcpu') {
-                        if (elements.upscaleTokenContainer) elements.upscaleTokenContainer.style.display = 'none';
-                    } else {
-                        if (elements.upscaleTokenContainer) elements.upscaleTokenContainer.style.display = 'flex';
-                        if (elements.upscaleApiToken) elements.upscaleApiToken.placeholder = UPSCALE_TOKEN_PLACEHOLDERS[state.upscaleEngine] || '';
-                    }
+                    updateTokenVisibility(state.upscaleEngine);
                 });
             });
             // Cargar estado guardado
@@ -316,22 +315,18 @@
                 document.querySelectorAll('#upscaleEngineOptions .engine-option').forEach(el => el.classList.remove('selected'));
                 const checkedInput = document.querySelector(`input[name="upscaleEngine"][value="${savedUpscaleEngine}"]`);
                 if (checkedInput) checkedInput.closest('.engine-option').classList.add('selected');
-                if (savedUpscaleEngine === 'hfcpu' && elements.upscaleTokenContainer) {
-                    elements.upscaleTokenContainer.style.display = 'none';
-                } else if (elements.upscaleApiToken) {
-                    elements.upscaleApiToken.placeholder = UPSCALE_TOKEN_PLACEHOLDERS[savedUpscaleEngine] || '';
-                }
             }
+            updateTokenVisibility(state.upscaleEngine);
         }
-        if (elements.upscaleApiToken) {
+        if (elements.hfGpuToken) {
             const savedUpscaleToken = localStorage.getItem('kohariUpscale_token');
             if (savedUpscaleToken) {
-                state.upscaleApiToken = savedUpscaleToken;
-                elements.upscaleApiToken.value = savedUpscaleToken;
+                state.hfGpuToken = savedUpscaleToken;
+                elements.hfGpuToken.value = savedUpscaleToken;
             }
-            elements.upscaleApiToken.addEventListener('input', (e) => {
-                state.upscaleApiToken = e.target.value.trim();
-                localStorage.setItem('kohariUpscale_token', state.upscaleApiToken);
+            elements.hfGpuToken.addEventListener('input', (e) => {
+                state.hfGpuToken = e.target.value.trim();
+                localStorage.setItem('kohariUpscale_token', state.hfGpuToken);
             });
         }
 
@@ -718,8 +713,8 @@
         },
         FALLBACK: {
             NAME:       'CPU (Ilimitado)',
-            HF_SPACE:   'https://fabrice-tiercelin-realesrgan-api.hf.space', // Usamos el API space si existe, o el principal
-            HF_TOKEN:   '',      // <--- PEGA TU TOKEN AQUÍ (hf_...)
+            HF_SPACE:   'https://fabrice-tiercelin-realesrgan-api.hf.space',
+            HF_TOKEN:   '',      // <--- PEGA TU TOKEN HF AQUÍ SI LO TIENES (hf_...)
             TYPE:       'gradio5',
             SCALE:      4,
             TIMEOUT_MS: 300000
@@ -727,12 +722,6 @@
     };
 
     const FALLBACK_URL = 'https://fabrice-tiercelin-realesrgan.hf.space';
-
-    const REPLICATE_CONFIG = {
-        MODEL_VERSION: '42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b',
-        POLL_INTERVAL_MS: 2500,
-        TIMEOUT_MS: 300000
-    };
 
     function showUpscaleStatus(show, text) {
         if (elements.upscaleStatus)
@@ -818,7 +807,7 @@
             });
 
             // 6. Procesar todos los chunks en PARALELO
-            const engineLabel = { replicate: 'Replicate', hfgpu: 'HF GPU', hfcpu: 'HF CPU' }[state.upscaleEngine] || state.upscaleEngine;
+            const engineLabel = { local: 'Local', hfgpu: 'HF GPU', hfcpu: 'HF CPU' }[state.upscaleEngine] || state.upscaleEngine;
             showUpscaleStatus(true, `Enviando ${chunks.length} sección(es) a ${engineLabel}...`);
             let completedCount = 0;
 
@@ -882,85 +871,101 @@
      */
     async function upscaleWithSelectedEngine(imageBase64, scale, prefixText = '') {
         switch (state.upscaleEngine) {
-            case 'replicate':
-                return await upscaleWithReplicate(imageBase64, scale, prefixText);
+            case 'local':
+                // Upscayl Lite: modelo ONNX local, sin API, ultra-rápido
+                return await upscaleWithLocal(imageBase64, scale);
             case 'hfgpu': {
                 const cfg = Object.assign({}, UPSCALE_CONFIG.PRIMARY);
-                if (state.upscaleApiToken) cfg.HF_TOKEN = state.upscaleApiToken;
+                if (state.hfGpuToken) cfg.HF_TOKEN = state.hfGpuToken;
                 return await upscaleGradio4(imageBase64, scale, prefixText, cfg);
             }
             case 'hfcpu': {
                 const cfg = Object.assign({}, UPSCALE_CONFIG.FALLBACK);
-                if (state.upscaleApiToken) cfg.HF_TOKEN = state.upscaleApiToken;
+                if (state.hfGpuToken) cfg.HF_TOKEN = state.hfGpuToken;
                 return await upscaleGradio5(imageBase64, scale, prefixText, cfg);
             }
             default:
-                return await upscaleWithRealESRGAN(imageBase64, scale, prefixText);
+                // Upscayl Lite: modelo ONNX local, sin API, ultra-rápido
+                return await upscaleWithLocal(imageBase64, scale);
         }
     }
 
+
     /**
-     * Upscale vía Replicate.com (Real-ESRGAN). Compute dedicado, sin cola, ~30-60s.
-     * Requiere token r8_... en state.upscaleApiToken.
+     * Upscale local con realesrgan-ncnn-vulkan.exe (Upscayl Lite).
+     * Sin API, sin token, 100% offline. Modelo: realesrgan-x4plus-anime.
      */
-    async function upscaleWithReplicate(imageBase64, scale, prefixText = '') {
-        const token = state.upscaleApiToken;
-        if (!token || !token.startsWith('r8_'))
-            throw new Error('Token de Replicate inválido. Ingresa un token r8_... en el campo de token.');
+    async function upscaleWithLocal(imageBase64, scale) {
+        try {
+            const fs   = require('fs');
+            const path = require('path');
+            const { spawn } = require('child_process');
 
-        const deadline = Date.now() + REPLICATE_CONFIG.TIMEOUT_MS;
+            // Ruta relativa al root de la extensión CEP
+            const extensionRoot = (typeof __dirname !== 'undefined') ? __dirname : '.';
+            const toolsPath  = path.join(extensionRoot, 'tools', 'upscaler');
+            const binaryPath = path.join(toolsPath, 'realesrgan-ncnn-vulkan.exe');
+            const modelName  = 'realesrgan-x4plus-anime';
 
-        // 1. Crear predicción
-        const createRes = await fetch('https://api.replicate.com/v1/predictions', {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Token ' + token,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                version: REPLICATE_CONFIG.MODEL_VERSION,
-                input: {
-                    image: 'data:image/jpeg;base64,' + imageBase64,
-                    scale: scale,
-                    face_enhance: false
-                }
-            })
-        });
-        if (!createRes.ok) {
-            const errText = await createRes.text().catch(() => '');
-            throw new Error(`Replicate error ${createRes.status}: ${errText.slice(0, 200)}`);
-        }
-        const prediction = await createRes.json();
-        const pollUrl = prediction.urls && prediction.urls.get;
-        if (!pollUrl) throw new Error('Replicate no devolvió URL de polling.');
+            if (!fs.existsSync(binaryPath))
+                throw new Error('Binario local no encontrado: ' + binaryPath + '\nCopia realesrgan-ncnn-vulkan.exe en tools/upscaler/');
 
-        // 2. Polling hasta completar
-        while (Date.now() < deadline) {
-            await new Promise(r => setTimeout(r, REPLICATE_CONFIG.POLL_INTERVAL_MS));
-            const pollRes = await fetch(pollUrl, {
-                headers: { 'Authorization': 'Token ' + token }
-            });
-            if (!pollRes.ok) throw new Error('Replicate poll error: HTTP ' + pollRes.status);
-            const status = await pollRes.json();
+            // Directorio temporal dentro de la extensión
+            const tempDir = path.join(extensionRoot, '.temp-upscale');
+            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-            if (status.status === 'succeeded') {
-                const outputUrl = Array.isArray(status.output) ? status.output[0] : status.output;
-                if (!outputUrl) throw new Error('Replicate no devolvió imagen en output.');
-                const imgRes = await fetch(outputUrl);
-                if (!imgRes.ok) throw new Error('No se pudo descargar resultado de Replicate.');
-                const imgBlob = await imgRes.blob();
-                return await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(imgBlob);
+            const stamp      = Date.now();
+            const inputPath  = path.join(tempDir, 'input_'  + stamp + '.jpg');
+            const outputPath = path.join(tempDir, 'output_' + stamp + '_4x.png');
+
+            // Escribir JPEG de entrada desde base64
+            const cleanB64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+            fs.writeFileSync(inputPath, Buffer.from(cleanB64, 'base64'));
+
+            showUpscaleStatus(true, 'Local: procesando con Real-ESRGAN...');
+
+            return await new Promise((resolve, reject) => {
+                const proc = spawn(binaryPath, [
+                    '-i', inputPath,
+                    '-o', outputPath,
+                    '-n', modelName,
+                    '-s', String(scale || 4)
+                ], { stdio: 'pipe' });
+
+                let stderr = '';
+                proc.stderr.on('data', (d) => {
+                    stderr += d.toString();
+                    console.log('[Upscayl Local]', d.toString().trim());
                 });
-            }
-            if (status.status === 'failed' || status.status === 'canceled') {
-                throw new Error('Replicate falló: ' + (status.error || status.status));
-            }
+
+                proc.on('close', (code) => {
+                    try {
+                        // Limpiar input sin importar el resultado
+                        try { fs.unlinkSync(inputPath); } catch (_) {}
+
+                        if (code !== 0)
+                            throw new Error('realesrgan-ncnn-vulkan salió con código ' + code + ': ' + stderr.slice(0, 300));
+
+                        if (!fs.existsSync(outputPath))
+                            throw new Error('El binario terminó pero no generó el archivo de salida: ' + outputPath);
+
+                        const resultBase64 = 'data:image/png;base64,' + fs.readFileSync(outputPath).toString('base64');
+                        try { fs.unlinkSync(outputPath); } catch (_) {}
+                        resolve(resultBase64);
+                    } catch (err) {
+                        reject(err);
+                    }
+                });
+
+                proc.on('error', (err) => {
+                    reject(new Error('Error al lanzar el upscaler local: ' + err.message));
+                });
+            });
+
+        } catch (error) {
+            console.error('[Kohari] upscaleWithLocal error:', error);
+            throw error;
         }
-        throw new Error('Replicate timeout — predicción no completó en el tiempo límite.');
     }
 
     /**
@@ -1164,176 +1169,6 @@
         });
     }
 
-    /**
-     * Envía la imagen JPEG a Real-ESRGAN vía Nick088/Real-ESRGAN_Pytorch (Gradio 4 Queue API).
-     * Usa GPU (NVIDIA A10G) para procesamiento ultra-rápido (~10s por bloque).
-     *
-     * Flujo Gradio 4 Queue:
-     * 1. POST /upload         → sube archivo, devuelve path temporal
-     * 2. POST /queue/join     → encola trabajo con fn_index y session_hash
-     * 3. GET  /queue/data     → SSE stream: estimation → process_starts → process_completed
-     *
-     * @param {string} imageBase64 - Base64 del JPEG (sin prefijo data:)
-     * @param {number} scale       - Factor de escala (2, 4, 8)
-     * @param {string} prefixText  - Texto de prefijo para el status
-     * @returns {Promise<string>}  - Data URL de la imagen escalada
-     */
-    async function upscaleWithRealESRGAN_OLD(imageBase64, scale, prefixText = '') {
-        const { HF_SPACE, HF_TOKEN, TIMEOUT_MS } = UPSCALE_CONFIG;
-        const authHeaders = HF_TOKEN ? { 'Authorization': 'Bearer ' + HF_TOKEN } : {};
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-        const sessionHash = 'kohari_' + Math.random().toString(36).substr(2, 9);
-
-        try {
-            // 1. Subir JPEG al Space
-            const blob = base64ToBlob(imageBase64, 'image/jpeg');
-            const form = new FormData();
-            form.append('files', blob, 'tira.jpg');
-
-            showUpscaleStatus(true, `${prefixText} Subiendo al servidor...`);
-            const uploadRes = await fetch(`${HF_SPACE}/upload`, {
-                method: 'POST', body: form, signal: controller.signal,
-                headers: authHeaders
-            });
-            if (!uploadRes.ok)
-                throw new Error('Error al subir imagen: HTTP ' + uploadRes.status);
-
-            const uploadData   = await uploadRes.json();
-            const uploadedPath = Array.isArray(uploadData) ? uploadData[0] : uploadData;
-
-            // 2. Encolar trabajo en la GPU
-            showUpscaleStatus(true, `${prefixText} Encolando en GPU...`);
-            const joinRes = await fetch(`${HF_SPACE}/queue/join`, {
-                method: 'POST',
-                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
-                body: JSON.stringify({
-                    data: [
-                        { path: uploadedPath, meta: { _type: 'gradio.FileData' } },
-                        scale
-                    ],
-                    fn_index: 0,
-                    session_hash: sessionHash
-                }),
-                signal: controller.signal
-            });
-            if (!joinRes.ok)
-                throw new Error('Error al encolar proceso: HTTP ' + joinRes.status);
-
-            const joinData = await joinRes.json();
-            if (!joinData.event_id)
-                throw new Error('No se recibió event_id del servidor.');
-
-            // 3. Leer SSE del stream de resultados
-            showUpscaleStatus(true, `${prefixText} Esperando GPU...`);
-            const sseRes = await fetch(
-                `${HF_SPACE}/queue/data?session_hash=${sessionHash}`,
-                { signal: controller.signal, headers: authHeaders }
-            );
-            if (!sseRes.ok)
-                throw new Error('Error al conectar con stream: HTTP ' + sseRes.status);
-
-            const result = await new Promise((resolve, reject) => {
-                const reader  = sseRes.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer    = '';
-                let elapsed   = 0;
-
-                const tick = setInterval(() => {
-                    elapsed += 2;
-                    showUpscaleStatus(true, `${prefixText} Procesando en GPU… ${elapsed}s`);
-                }, 2000);
-
-                function processSSE() {
-                    reader.read().then(({ done, value }) => {
-                        if (done) {
-                            clearInterval(tick);
-                            reject(new Error('Stream cerrado sin resultado.'));
-                            return;
-                        }
-
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop();
-
-                        for (const line of lines) {
-                            const trimmed = line.trim();
-                            if (!trimmed.startsWith('data:')) continue;
-                            const raw = trimmed.replace(/^data:\s*/, '');
-
-                            try {
-                                const parsed = JSON.parse(raw);
-
-                                if (parsed.msg === 'process_completed') {
-                                    clearInterval(tick);
-                                    if (parsed.output && parsed.output.data && parsed.output.data.length > 0) {
-                                        resolve(parsed.output.data[0]);
-                                    } else if (parsed.output && parsed.output.error) {
-                                        reject(new Error('Error del modelo: ' + parsed.output.error));
-                                    } else {
-                                        reject(new Error('Respuesta inesperada del servidor.'));
-                                    }
-                                    return;
-                                }
-                                if (parsed.msg === 'queue_full') {
-                                    clearInterval(tick);
-                                    reject(new Error('La cola de GPU está llena. Intenta de nuevo en unos segundos.'));
-                                    return;
-                                }
-                                if (parsed.msg === 'process_starts') {
-                                    showUpscaleStatus(true, `${prefixText} ¡GPU procesando!`);
-                                }
-                                if (parsed.msg === 'estimation') {
-                                    const pos = parsed.rank != null ? parsed.rank : '?';
-                                    showUpscaleStatus(true, `${prefixText} En cola… posición ${pos}`);
-                                }
-                            } catch (_) { /* línea no-JSON, ignorar */ }
-                        }
-
-                        processSSE();
-                    }).catch((err) => {
-                        clearInterval(tick);
-                        reject(err);
-                    });
-                }
-
-                processSSE();
-            });
-
-            clearTimeout(timer);
-
-            if (!result) throw new Error('El servidor no devolvió imagen.');
-
-            const imageUrl = typeof result === 'object'
-                ? (result.url || result.path)
-                : String(result);
-
-            if (!imageUrl) throw new Error('El servidor devolvió resultado vacío.');
-            if (imageUrl.startsWith('data:')) return imageUrl;
-
-            const finalUrl = imageUrl.startsWith('http')
-                ? imageUrl
-                : `${HF_SPACE}/file=${imageUrl.replace(/^(file=|\/)+/g, '')}`;
-
-            showUpscaleStatus(true, `${prefixText} Descargando resultado...`);
-            const imgRes = await fetch(finalUrl, { signal: controller.signal });
-            if (!imgRes.ok) throw new Error('No se pudo descargar la imagen resultado.');
-
-            const imgBlob = await imgRes.blob();
-            return await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload  = () => resolve(reader.result);
-                reader.onerror = () => reject(new Error('Error leyendo imagen de respuesta.'));
-                reader.readAsDataURL(imgBlob);
-            });
-
-        } catch (err) {
-            clearTimeout(timer);
-            if (err.name === 'AbortError')
-                throw new Error('Timeout: el servidor no respondió en ' + (TIMEOUT_MS / 60000) + ' minutos.');
-            throw err;
-        }
-    }
 
     // ============================================
     // FUNCIÓN PRINCIPAL DE ESCANEO

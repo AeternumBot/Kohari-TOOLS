@@ -373,9 +373,9 @@
                         <!-- Motor de upscale -->
                         <div class="upscale-engine-section">
                             <div class="engine-options" id="upscaleEngineOptions">
-                                <label class="engine-option selected" title="Replicate.com — compute dedicado, sin cola, ~30-60s total (requiere token r8_...)">
-                                    <input type="radio" name="upscaleEngine" value="replicate" checked>
-                                    <span class="engine-name">⚡ Replicate</span>
+                                <label class="engine-option selected" title="Local — realesrgan-ncnn-vulkan, sin API, 100% offline">
+                                    <input type="radio" name="upscaleEngine" value="local" checked>
+                                    <span class="engine-name">Local (Upscayl Lite)</span>
                                 </label>
                                 <label class="engine-option" title="Hugging Face GPU — ZeroGPU con cola (token hf_... opcional pero recomendado)">
                                     <input type="radio" name="upscaleEngine" value="hfgpu">
@@ -386,8 +386,8 @@
                                     <span class="engine-name">HF CPU</span>
                                 </label>
                             </div>
-                            <div class="api-key-container" id="upscaleTokenContainer">
-                                <input type="password" id="upscaleApiToken" class="input-field upscale-token-input" placeholder="Token r8_... (Replicate)" autocomplete="off">
+                            <div class="api-key-container" id="upscaleTokenContainer" style="display: none;">
+                                <input type="password" id="upscaleApiToken" class="input-field upscale-token-input" placeholder="Token hf_... (Hugging Face, opcional)" autocomplete="off">
                             </div>
                         </div>
 
