@@ -20,6 +20,8 @@
         currentTextType: 'bubble', // 'bubble' | 'OT' | 'ST'
         ocrEngine: 'local', // 'local' | 'gemini'
         apiKey: '',
+        upscaleEngine: 'replicate', // 'replicate' | 'hfgpu' | 'hfcpu'
+        upscaleApiToken: '',
         strips: [{ id: 1, label: 'Tira 1', bubbles: [] }],
         currentStripIndex: 0,
         options: {
@@ -76,9 +78,12 @@
             aiStatus:       document.getElementById('aiStatus'),
             aiStatusText:   document.getElementById('aiStatusText'),
             // Upscale IA elements
-            upscaleWithAIBtn:  document.getElementById('upscaleWithAIBtn'),
-            upscaleStatus:     document.getElementById('upscaleStatus'),
-            upscaleStatusText: document.getElementById('upscaleStatusText'),
+            upscaleWithAIBtn:    document.getElementById('upscaleWithAIBtn'),
+            upscaleStatus:       document.getElementById('upscaleStatus'),
+            upscaleStatusText:   document.getElementById('upscaleStatusText'),
+            upscaleEngineInputs: document.querySelectorAll('input[name="upscaleEngine"]'),
+            upscaleApiToken:     document.getElementById('upscaleApiToken'),
+            upscaleTokenContainer: document.getElementById('upscaleTokenContainer'),
         };
     }
 
@@ -280,6 +285,56 @@
             });
         }
 
+        // Upscale engine selector
+        if (elements.upscaleEngineInputs) {
+            const UPSCALE_TOKEN_PLACEHOLDERS = {
+                replicate: 'Token r8_... (Replicate)',
+                hfgpu:     'Token hf_... (Hugging Face, opcional)',
+                hfcpu:     ''
+            };
+            elements.upscaleEngineInputs.forEach(input => {
+                input.addEventListener('change', (e) => {
+                    state.upscaleEngine = e.target.value;
+                    localStorage.setItem('kohariUpscale_engine', state.upscaleEngine);
+
+                    document.querySelectorAll('#upscaleEngineOptions .engine-option').forEach(el => el.classList.remove('selected'));
+                    e.target.closest('.engine-option').classList.add('selected');
+
+                    if (state.upscaleEngine === 'hfcpu') {
+                        if (elements.upscaleTokenContainer) elements.upscaleTokenContainer.style.display = 'none';
+                    } else {
+                        if (elements.upscaleTokenContainer) elements.upscaleTokenContainer.style.display = 'flex';
+                        if (elements.upscaleApiToken) elements.upscaleApiToken.placeholder = UPSCALE_TOKEN_PLACEHOLDERS[state.upscaleEngine] || '';
+                    }
+                });
+            });
+            // Cargar estado guardado
+            const savedUpscaleEngine = localStorage.getItem('kohariUpscale_engine');
+            if (savedUpscaleEngine) {
+                state.upscaleEngine = savedUpscaleEngine;
+                elements.upscaleEngineInputs.forEach(input => { input.checked = (input.value === savedUpscaleEngine); });
+                document.querySelectorAll('#upscaleEngineOptions .engine-option').forEach(el => el.classList.remove('selected'));
+                const checkedInput = document.querySelector(`input[name="upscaleEngine"][value="${savedUpscaleEngine}"]`);
+                if (checkedInput) checkedInput.closest('.engine-option').classList.add('selected');
+                if (savedUpscaleEngine === 'hfcpu' && elements.upscaleTokenContainer) {
+                    elements.upscaleTokenContainer.style.display = 'none';
+                } else if (elements.upscaleApiToken) {
+                    elements.upscaleApiToken.placeholder = UPSCALE_TOKEN_PLACEHOLDERS[savedUpscaleEngine] || '';
+                }
+            }
+        }
+        if (elements.upscaleApiToken) {
+            const savedUpscaleToken = localStorage.getItem('kohariUpscale_token');
+            if (savedUpscaleToken) {
+                state.upscaleApiToken = savedUpscaleToken;
+                elements.upscaleApiToken.value = savedUpscaleToken;
+            }
+            elements.upscaleApiToken.addEventListener('input', (e) => {
+                state.upscaleApiToken = e.target.value.trim();
+                localStorage.setItem('kohariUpscale_token', state.upscaleApiToken);
+            });
+        }
+
         if (elements.stripInput) {
             elements.stripInput.addEventListener('change', (e) => {
                 let val = parseInt(e.target.value);
@@ -330,6 +385,9 @@
 
         const checkedEngine = document.querySelector('input[name="ocrEngine"]:checked');
         if (checkedEngine) checkedEngine.closest('.engine-option').classList.add('selected');
+
+        const checkedUpscaleEngine = document.querySelector('input[name="upscaleEngine"]:checked');
+        if (checkedUpscaleEngine) checkedUpscaleEngine.closest('.engine-option').classList.add('selected');
     }
 
 
@@ -668,8 +726,13 @@
         }
     };
 
-    // Corregimos la URL del fallback si es necesario
     const FALLBACK_URL = 'https://fabrice-tiercelin-realesrgan.hf.space';
+
+    const REPLICATE_CONFIG = {
+        MODEL_VERSION: '42fed1c4974146d4d2414e2be2c5277c7fcf05fcc3a73abf41610695738c1d7b',
+        POLL_INTERVAL_MS: 2500,
+        TIMEOUT_MS: 300000
+    };
 
     function showUpscaleStatus(show, text) {
         if (elements.upscaleStatus)
@@ -721,25 +784,19 @@
                 img.src = 'data:image/jpeg;base64,' + imageBase64;
             });
 
-            // 4. Calcular bloques (Tiling) para evitar timeouts en Hugging Face
+            // 4. Calcular bloques (Tiling)
             const CHUNK_HEIGHT = 1500;
-            const OVERLAP = 50; // Superposición para evitar marcas de corte (seams)
+            const OVERLAP = 50;
             let currentY = 0;
             let chunks = [];
 
             while (currentY < img.height) {
                 let sliceHeight = CHUNK_HEIGHT + OVERLAP;
-                if (currentY + sliceHeight > img.height) {
-                    sliceHeight = img.height - currentY;
-                }
+                if (currentY + sliceHeight > img.height) sliceHeight = img.height - currentY;
                 chunks.push({ y: currentY, height: sliceHeight });
                 currentY += CHUNK_HEIGHT;
             }
 
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            let upscaledPaths = [];
-            
             let safePath = tempPath
                 .replace(/^file:\/+/i, '')
                 .replace(/^file:\\+/i, '')
@@ -747,40 +804,49 @@
                 .replace(/\/$/, '');
             safePath = decodeURIComponent(safePath);
 
-            // 5. Procesar cada bloque secuencialmente
-            for (let i = 0; i < chunks.length; i++) {
-                const prefix = `[Sección ${i + 1}/${chunks.length}]`;
-                showUpscaleStatus(true, `${prefix} Cortando...`);
-
+            // 5. Renderizar todos los chunks en canvas (secuencial, rápido)
+            showUpscaleStatus(true, `Preparando ${chunks.length} sección(es)...`);
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const chunkDataArray = chunks.map((chunk) => {
                 canvas.width = img.width;
-                canvas.height = chunks[i].height;
+                canvas.height = chunk.height;
                 ctx.fillStyle = '#FFFFFF';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, -chunks[i].y);
+                ctx.drawImage(img, 0, -chunk.y);
+                return canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+            });
 
-                const chunkB64 = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+            // 6. Procesar todos los chunks en PARALELO
+            const engineLabel = { replicate: 'Replicate', hfgpu: 'HF GPU', hfcpu: 'HF CPU' }[state.upscaleEngine] || state.upscaleEngine;
+            showUpscaleStatus(true, `Enviando ${chunks.length} sección(es) a ${engineLabel}...`);
+            let completedCount = 0;
 
-                let upB64 = await upscaleWithRealESRGAN(chunkB64, UPSCALE_CONFIG.PRIMARY.SCALE, prefix);
+            const upscaledB64Array = await Promise.all(
+                chunkDataArray.map(async (chunkB64, i) => {
+                    const prefix = `[${i + 1}/${chunks.length}]`;
+                    const raw = await upscaleWithSelectedEngine(chunkB64, UPSCALE_CONFIG.PRIMARY.SCALE, prefix);
+                    if (!raw) throw new Error(`Sección ${i + 1} no devolvió imagen.`);
+                    completedCount++;
+                    showUpscaleStatus(true, `Completadas ${completedCount}/${chunks.length} secciones...`);
+                    return raw.includes(',') ? raw.split(',')[1] : raw;
+                })
+            );
 
-                if (!upB64) throw new Error(`${prefix} La IA no devolvió imagen.`);
-                if (upB64.includes(',')) upB64 = upB64.split(',')[1];
-
+            // 7. Escribir archivos resultado
+            const isWin = navigator.appVersion.indexOf('Win') !== -1;
+            let upscaledPaths = [];
+            for (let i = 0; i < upscaledB64Array.length; i++) {
                 const upFilePath = safePath + '/kohari_upscaled_' + exportIndex + '_chunk_' + i + '.png';
-                const upFilePathWin = upFilePath.replace(/\//g, '\\');
-
-                if (window.cep && window.cep.fs) {
-                    const isWin = navigator.appVersion.indexOf('Win') !== -1;
-                    const writeTo = isWin ? upFilePathWin : upFilePath;
-                    const wr = window.cep.fs.writeFile(writeTo, upB64, window.cep.encoding.Base64);
-                    if (wr.err !== window.cep.fs.NO_ERROR)
-                        throw new Error(`Error al escribir ${prefix}: ` + wr.err);
-                } else {
-                    throw new Error('CEP FS no disponible.');
-                }
+                if (!window.cep || !window.cep.fs) throw new Error('CEP FS no disponible.');
+                const writeTo = isWin ? upFilePath.replace(/\//g, '\\') : upFilePath;
+                const wr = window.cep.fs.writeFile(writeTo, upscaledB64Array[i], window.cep.encoding.Base64);
+                if (wr.err !== window.cep.fs.NO_ERROR)
+                    throw new Error(`Error al escribir sección ${i + 1}: ` + wr.err);
                 upscaledPaths.push(upFilePath);
             }
 
-            // 6. Ensamblar en Photoshop
+            // 8. Ensamblar en Photoshop
             showUpscaleStatus(true, 'Ensamblando bloques en Photoshop...');
             const pasteResult = await api.pasteUpscaledTiles(
                 upscaledPaths, originalWidth, originalHeight, exportIndex, CHUNK_HEIGHT, docName
@@ -788,10 +854,9 @@
             if (!pasteResult.success)
                 throw new Error('No se pudo pegar: ' + (pasteResult.error || 'desconocido'));
 
-            // 7. Limpiar temporales
+            // 9. Limpiar temporales
             try {
                 for (const p of upscaledPaths) {
-                    const isWin = navigator.appVersion.indexOf('Win') !== -1;
                     const delPath = isWin ? p.replace(/\//g, '\\') : p;
                     window.cep.fs.deleteFile(delPath);
                 }
@@ -810,6 +875,92 @@
             state.isProcessing = false;
             elements.upscaleWithAIBtn.disabled = false;
         }
+    }
+
+    /**
+     * Dispatcher: elige motor según selección del usuario.
+     */
+    async function upscaleWithSelectedEngine(imageBase64, scale, prefixText = '') {
+        switch (state.upscaleEngine) {
+            case 'replicate':
+                return await upscaleWithReplicate(imageBase64, scale, prefixText);
+            case 'hfgpu': {
+                const cfg = Object.assign({}, UPSCALE_CONFIG.PRIMARY);
+                if (state.upscaleApiToken) cfg.HF_TOKEN = state.upscaleApiToken;
+                return await upscaleGradio4(imageBase64, scale, prefixText, cfg);
+            }
+            case 'hfcpu': {
+                const cfg = Object.assign({}, UPSCALE_CONFIG.FALLBACK);
+                if (state.upscaleApiToken) cfg.HF_TOKEN = state.upscaleApiToken;
+                return await upscaleGradio5(imageBase64, scale, prefixText, cfg);
+            }
+            default:
+                return await upscaleWithRealESRGAN(imageBase64, scale, prefixText);
+        }
+    }
+
+    /**
+     * Upscale vía Replicate.com (Real-ESRGAN). Compute dedicado, sin cola, ~30-60s.
+     * Requiere token r8_... en state.upscaleApiToken.
+     */
+    async function upscaleWithReplicate(imageBase64, scale, prefixText = '') {
+        const token = state.upscaleApiToken;
+        if (!token || !token.startsWith('r8_'))
+            throw new Error('Token de Replicate inválido. Ingresa un token r8_... en el campo de token.');
+
+        const deadline = Date.now() + REPLICATE_CONFIG.TIMEOUT_MS;
+
+        // 1. Crear predicción
+        const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                version: REPLICATE_CONFIG.MODEL_VERSION,
+                input: {
+                    image: 'data:image/jpeg;base64,' + imageBase64,
+                    scale: scale,
+                    face_enhance: false
+                }
+            })
+        });
+        if (!createRes.ok) {
+            const errText = await createRes.text().catch(() => '');
+            throw new Error(`Replicate error ${createRes.status}: ${errText.slice(0, 200)}`);
+        }
+        const prediction = await createRes.json();
+        const pollUrl = prediction.urls && prediction.urls.get;
+        if (!pollUrl) throw new Error('Replicate no devolvió URL de polling.');
+
+        // 2. Polling hasta completar
+        while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, REPLICATE_CONFIG.POLL_INTERVAL_MS));
+            const pollRes = await fetch(pollUrl, {
+                headers: { 'Authorization': 'Token ' + token }
+            });
+            if (!pollRes.ok) throw new Error('Replicate poll error: HTTP ' + pollRes.status);
+            const status = await pollRes.json();
+
+            if (status.status === 'succeeded') {
+                const outputUrl = Array.isArray(status.output) ? status.output[0] : status.output;
+                if (!outputUrl) throw new Error('Replicate no devolvió imagen en output.');
+                const imgRes = await fetch(outputUrl);
+                if (!imgRes.ok) throw new Error('No se pudo descargar resultado de Replicate.');
+                const imgBlob = await imgRes.blob();
+                return await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(imgBlob);
+                });
+            }
+            if (status.status === 'failed' || status.status === 'canceled') {
+                throw new Error('Replicate falló: ' + (status.error || status.status));
+            }
+        }
+        throw new Error('Replicate timeout — predicción no completó en el tiempo límite.');
     }
 
     /**

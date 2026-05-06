@@ -1606,6 +1606,17 @@ body {
     flex-shrink: 0;
 }
 
+.upscale-engine-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.upscale-token-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
 /* Footnote */
 .extras-footnote {
     font-size: 10px;
