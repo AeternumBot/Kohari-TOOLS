@@ -159,7 +159,7 @@ function exportFullDocument(tempPath, index) {
 
         var filePath = tempPath + '/kohari_upscale_' + index + '.jpg';
         var jpgOpts  = new JPEGSaveOptions();
-        jpgOpts.quality = 10; // Escala PS 0-12; 10 ≈ calidad 92% — buen balance tamaño/calidad
+        jpgOpts.quality = 12; // Máxima calidad para preservar detalle antes de enviar a la IA
         dupDoc.saveAs(new File(filePath), jpgOpts, true, Extension.LOWERCASE);
         dupDoc.close(SaveOptions.DONOTSAVECHANGES);
 
@@ -221,56 +221,67 @@ function pasteUpscaledTiles(pathsStr, targetWidth, targetHeight, index, chunkHei
     app.displayDialogs = DialogModes.NO;
     try {
         var paths = pathsStr.split("|||");
-        
-        // Buscar el documento original por nombre para evitar pegar en el equivocado si el usuario cambió de pestaña
-        var doc;
-        try {
-            doc = app.documents.getByName(docName);
-            app.activeDocument = doc; // Traerlo al frente
-        } catch(e) {
-            doc = app.activeDocument; // Fallback
-        }
-        
-        // Crear un grupo para contener todas las piezas
-        var group = doc.layerSets.add();
-        group.name = 'Kohari_Upscaled_' + index;
-        
         var chunkHeight = parseFloat(chunkHeightRaw);
+        
+        // Abrir la primera pieza para conocer las dimensiones reales del upscale
+        var firstFile = new File(paths[0]);
+        if (!firstFile.exists) throw new Error("Archivo no encontrado: " + paths[0]);
+        
+        var probe = app.open(firstFile);
+        var tileW = Math.round(probe.width.as('px'));
+        var tileH = Math.round(probe.height.as('px'));
+        probe.close(SaveOptions.DONOTSAVECHANGES);
+        
+        // Calcular el factor de escala real del modelo
+        var scaleFactor = tileW / targetWidth;
+        
+        // Crear documento nuevo a la resolución mejorada
+        var newW = Math.round(targetWidth * scaleFactor);
+        var newH = Math.round(targetHeight * scaleFactor);
+        var scaledChunkH = Math.round(chunkHeight * scaleFactor);
+        
+        var newDoc = app.documents.add(
+            UnitValue(newW, 'px'),
+            UnitValue(newH, 'px'),
+            72, // DPI
+            'Kohari_Upscale_' + index,
+            NewDocumentMode.RGB,
+            DocumentFill.WHITE
+        );
         
         for (var i = 0; i < paths.length; i++) {
             var outFile = new File(paths[i]);
-            if (!outFile.exists) {
-                throw new Error("File not found: " + paths[i]);
-            }
+            if (!outFile.exists) throw new Error("Archivo no encontrado: " + paths[i]);
             
             var upDoc = app.open(outFile);
             upDoc.selection.selectAll();
             upDoc.selection.copy();
             upDoc.close(SaveOptions.DONOTSAVECHANGES);
             
-            doc.activeLayer = group;
-            var pastedLayer = doc.paste();
-            pastedLayer.name = 'Kohari_Chunk_' + i;
+            app.activeDocument = newDoc;
             
-            // Las piezas vienen escaladas ×2, así que las encogemos al 50%
-            // o según la relación del ancho original.
+            var pastedLayer = newDoc.paste();
+            pastedLayer.name = 'Chunk_' + i;
+            
+            // Posicionar en la coordenada Y correcta (sin redimensionar — tamaño completo)
             var lb = pastedLayer.bounds;
-            var layerW = parseFloat(lb[2]) - parseFloat(lb[0]);
-            
-            // El targetWidth es el ancho total de la tira. Como la tira completa fue cortada a lo ancho,
-            // la pieza cortada abarca todo el ancho del documento original.
-            var scale = (targetWidth / layerW) * 100;
-            pastedLayer.resize(scale, scale, AnchorPosition.TOPLEFT);
-            
-            // Mover a la coordenada Y correcta: el chunk 'i' empezaba en Y = i * chunkHeight
-            var lb2 = pastedLayer.bounds;
-            var targetY = i * chunkHeight;
-            
-            pastedLayer.translate(-parseFloat(lb2[0]), targetY - parseFloat(lb2[1]));
+            var targetY = i * scaledChunkH;
+            pastedLayer.translate(-parseFloat(lb[0]), targetY - parseFloat(lb[1]));
         }
         
+        // Eliminar la capa "Fondo" blanca que se creó con el documento
+        try {
+            var bgLayer = newDoc.backgroundLayer;
+            bgLayer.isBackgroundLayer = false;
+            bgLayer.remove();
+        } catch(e2) {}
+        
+        // Aplanar todo en una sola capa
+        newDoc.flatten();
+        newDoc.activeLayer.name = 'Kohari_Upscale';
+        
         app.displayDialogs = prevDialogs;
-        return '{"success": true, "layerName": "' + group.name + '"}';
+        return '{"success": true, "layerName": "Kohari_Upscale"}';
     } catch (e) {
         app.displayDialogs = prevDialogs;
         return '{"success": false, "error": "pasteUpscaledTiles: ' + escapeJSON(e) + '"}';

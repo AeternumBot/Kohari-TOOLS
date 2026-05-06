@@ -650,10 +650,26 @@
     // ============================================
 
     const UPSCALE_CONFIG = {
-        HF_SPACE:   'https://nick088-real-esrgan-pytorch.hf.space',
-        SCALE:      2,       // ×2: el resultado se reduce de vuelta al tamaño original
-        TIMEOUT_MS: 120000   // 2 min — con GPU debería tardar ~10s por bloque
+        PRIMARY: {
+            NAME:       'GPU (Rápido)',
+            HF_SPACE:   'https://nick088-real-esrgan-pytorch.hf.space',
+            HF_TOKEN:   '',      // <--- PEGA TU TOKEN AQUÍ (hf_...)
+            TYPE:       'gradio4',
+            SCALE:      4,
+            TIMEOUT_MS: 120000
+        },
+        FALLBACK: {
+            NAME:       'CPU (Ilimitado)',
+            HF_SPACE:   'https://fabrice-tiercelin-realesrgan-api.hf.space', // Usamos el API space si existe, o el principal
+            HF_TOKEN:   '',      // <--- PEGA TU TOKEN AQUÍ (hf_...)
+            TYPE:       'gradio5',
+            SCALE:      4,
+            TIMEOUT_MS: 300000
+        }
     };
+
+    // Corregimos la URL del fallback si es necesario
+    const FALLBACK_URL = 'https://fabrice-tiercelin-realesrgan.hf.space';
 
     function showUpscaleStatus(show, text) {
         if (elements.upscaleStatus)
@@ -744,7 +760,7 @@
 
                 const chunkB64 = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
 
-                let upB64 = await upscaleWithRealESRGAN(chunkB64, UPSCALE_CONFIG.SCALE, prefix);
+                let upB64 = await upscaleWithRealESRGAN(chunkB64, UPSCALE_CONFIG.PRIMARY.SCALE, prefix);
 
                 if (!upB64) throw new Error(`${prefix} La IA no devolvió imagen.`);
                 if (upB64.includes(',')) upB64 = upB64.split(',')[1];
@@ -797,6 +813,207 @@
     }
 
     /**
+     * Función principal que intenta usar el servidor GPU y cae al CPU si hay error de cuota.
+     */
+    async function upscaleWithRealESRGAN(imageBase64, scale, prefixText = '') {
+        try {
+            // Intento 1: GPU (Nick088)
+            return await upscaleGradio4(imageBase64, scale, prefixText, UPSCALE_CONFIG.PRIMARY);
+        } catch (err) {
+            const isQuotaError = err.message.includes('quota') || err.message.includes('403') || err.message.includes('ZeroGPU');
+            if (isQuotaError) {
+                console.warn('[Kohari] Cuota GPU agotada, usando Fallback CPU...');
+                showToast('Cuota GPU agotada. Usando servidor de respaldo (más lento)...', 'warning');
+                return await upscaleGradio5(imageBase64, scale, prefixText, UPSCALE_CONFIG.FALLBACK);
+            }
+            throw err;
+        }
+    }
+
+    /**
+     * Implementación para Gradio 4 (Nick088)
+     */
+    async function upscaleGradio4(imageBase64, scale, prefixText, config) {
+        const { HF_SPACE, HF_TOKEN, TIMEOUT_MS } = config;
+        const authHeaders = HF_TOKEN ? { 'Authorization': 'Bearer ' + HF_TOKEN } : {};
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const sessionHash = 'kohari_' + Math.random().toString(36).substr(2, 9);
+
+        try {
+            const blob = base64ToBlob(imageBase64, 'image/jpeg');
+            const form = new FormData();
+            form.append('files', blob, 'tira.jpg');
+
+            showUpscaleStatus(true, `${prefixText} Subiendo a GPU...`);
+            const uploadRes = await fetch(`${HF_SPACE}/upload`, {
+                method: 'POST', body: form, signal: controller.signal,
+                headers: authHeaders
+            });
+            if (!uploadRes.ok) throw new Error('HTTP ' + uploadRes.status);
+
+            const uploadData = await uploadRes.json();
+            const uploadedPath = Array.isArray(uploadData) ? uploadData[0] : uploadData;
+
+            showUpscaleStatus(true, `${prefixText} Encolando GPU...`);
+            const joinRes = await fetch(`${HF_SPACE}/queue/join`, {
+                method: 'POST',
+                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
+                body: JSON.stringify({
+                    data: [{ path: uploadedPath, meta: { _type: 'gradio.FileData' } }, scale],
+                    fn_index: 0,
+                    session_hash: sessionHash
+                }),
+                signal: controller.signal
+            });
+            if (!joinRes.ok) throw new Error('HTTP ' + joinRes.status);
+            const joinData = await joinRes.json();
+
+            return await monitorQueue(HF_SPACE, sessionHash, authHeaders, controller, prefixText, timer);
+        } catch (e) {
+            clearTimeout(timer);
+            throw e;
+        }
+    }
+
+    /**
+     * Implementación para Gradio 5 (Fabrice)
+     */
+    async function upscaleGradio5(imageBase64, scale, prefixText, config) {
+        const HF_SPACE = FALLBACK_URL;
+        const { HF_TOKEN, TIMEOUT_MS } = config;
+        const authHeaders = HF_TOKEN ? { 'Authorization': 'Bearer ' + HF_TOKEN } : {};
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        try {
+            const blob = base64ToBlob(imageBase64, 'image/jpeg');
+            const form = new FormData();
+            form.append('files', blob, 'tira.jpg');
+
+            showUpscaleStatus(true, `${prefixText} Subiendo a CPU...`);
+            const uploadRes = await fetch(`${HF_SPACE}/gradio_api/upload`, {
+                method: 'POST', body: form, signal: controller.signal,
+                headers: authHeaders
+            });
+            const uploadData = await uploadRes.json();
+            const uploadedPath = uploadData[0];
+
+            showUpscaleStatus(true, `${prefixText} Iniciando CPU...`);
+            const callRes = await fetch(`${HF_SPACE}/gradio_api/call/predict`, {
+                method: 'POST',
+                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
+                body: JSON.stringify({
+                    data: [{ path: uploadedPath, meta: { _type: 'gradio.FileData' } }, 4] // Fabrice usa 4 como número
+                }),
+                signal: controller.signal
+            });
+            const { event_id } = await callRes.json();
+
+            const sseRes = await fetch(`${HF_SPACE}/gradio_api/call/predict/${event_id}`, {
+                signal: controller.signal, headers: authHeaders
+            });
+
+            const result = await new Promise((resolve, reject) => {
+                const reader = sseRes.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let lastEvent = '';
+
+                function process() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) { reject(new Error('Stream cerrado')); return; }
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        for (const line of lines) {
+                            if (line.startsWith('event:')) lastEvent = line.replace('event:', '').trim();
+                            if (line.startsWith('data:')) {
+                                const data = line.replace('data:', '').trim();
+                                if (lastEvent === 'complete') {
+                                    try { resolve(JSON.parse(data)[0]); } catch(e) {}
+                                    return;
+                                }
+                                if (lastEvent === 'error') { reject(new Error('Error CPU: ' + data)); return; }
+                            }
+                        }
+                        process();
+                    }).catch(reject);
+                }
+                process();
+            });
+
+            clearTimeout(timer);
+            return await downloadAndConvertToPNG(result, HF_SPACE, controller, prefixText);
+        } catch (e) {
+            clearTimeout(timer);
+            throw e;
+        }
+    }
+
+    async function monitorQueue(HF_SPACE, sessionHash, authHeaders, controller, prefixText, timer) {
+        const sseRes = await fetch(`${HF_SPACE}/queue/data?session_hash=${sessionHash}`, {
+            signal: controller.signal, headers: authHeaders
+        });
+        const result = await new Promise((resolve, reject) => {
+            const reader = sseRes.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            function process() {
+                reader.read().then(({ done, value }) => {
+                    if (done) { reject(new Error('Stream cerrado')); return; }
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const parsed = JSON.parse(line.replace('data:', ''));
+                        if (parsed.msg === 'process_completed') {
+                            if (parsed.output.error) reject(new Error(parsed.output.error));
+                            else resolve(parsed.output.data[0]);
+                            return;
+                        }
+                        if (parsed.msg === 'estimation') showUpscaleStatus(true, `${prefixText} En cola: ${parsed.rank || '?'}`);
+                        if (parsed.msg === 'process_starts') showUpscaleStatus(true, `${prefixText} Procesando...`);
+                    }
+                    process();
+                }).catch(reject);
+            }
+            process();
+        });
+        return await downloadAndConvertToPNG(result, HF_SPACE, controller, prefixText);
+    }
+
+    async function downloadAndConvertToPNG(result, HF_SPACE, controller, prefixText) {
+        const imageUrl = typeof result === 'object' ? (result.url || result.path) : String(result);
+        const finalUrl = imageUrl.startsWith('http') ? imageUrl : `${HF_SPACE}/file=${imageUrl.replace(/^\//, '')}`;
+        
+        showUpscaleStatus(true, `${prefixText} Descargando...`);
+        const imgRes = await fetch(finalUrl, { signal: controller.signal });
+        const imgBlob = await imgRes.blob();
+        
+        const upB64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(imgBlob);
+        });
+
+        // Convertir a PNG real
+        showUpscaleStatus(true, `${prefixText} Finalizando...`);
+        return await new Promise((resolve, reject) => {
+            const tmpImg = new Image();
+            tmpImg.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = tmpImg.width;
+                c.height = tmpImg.height;
+                c.getContext('2d').drawImage(tmpImg, 0, 0);
+                resolve(c.toDataURL('image/png'));
+            };
+            tmpImg.src = upB64;
+        });
+    }
+
+    /**
      * Envía la imagen JPEG a Real-ESRGAN vía Nick088/Real-ESRGAN_Pytorch (Gradio 4 Queue API).
      * Usa GPU (NVIDIA A10G) para procesamiento ultra-rápido (~10s por bloque).
      *
@@ -810,8 +1027,9 @@
      * @param {string} prefixText  - Texto de prefijo para el status
      * @returns {Promise<string>}  - Data URL de la imagen escalada
      */
-    async function upscaleWithRealESRGAN(imageBase64, scale, prefixText = '') {
-        const { HF_SPACE, TIMEOUT_MS } = UPSCALE_CONFIG;
+    async function upscaleWithRealESRGAN_OLD(imageBase64, scale, prefixText = '') {
+        const { HF_SPACE, HF_TOKEN, TIMEOUT_MS } = UPSCALE_CONFIG;
+        const authHeaders = HF_TOKEN ? { 'Authorization': 'Bearer ' + HF_TOKEN } : {};
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
         const sessionHash = 'kohari_' + Math.random().toString(36).substr(2, 9);
@@ -824,7 +1042,8 @@
 
             showUpscaleStatus(true, `${prefixText} Subiendo al servidor...`);
             const uploadRes = await fetch(`${HF_SPACE}/upload`, {
-                method: 'POST', body: form, signal: controller.signal
+                method: 'POST', body: form, signal: controller.signal,
+                headers: authHeaders
             });
             if (!uploadRes.ok)
                 throw new Error('Error al subir imagen: HTTP ' + uploadRes.status);
@@ -836,7 +1055,7 @@
             showUpscaleStatus(true, `${prefixText} Encolando en GPU...`);
             const joinRes = await fetch(`${HF_SPACE}/queue/join`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
                 body: JSON.stringify({
                     data: [
                         { path: uploadedPath, meta: { _type: 'gradio.FileData' } },
@@ -858,7 +1077,7 @@
             showUpscaleStatus(true, `${prefixText} Esperando GPU...`);
             const sseRes = await fetch(
                 `${HF_SPACE}/queue/data?session_hash=${sessionHash}`,
-                { signal: controller.signal }
+                { signal: controller.signal, headers: authHeaders }
             );
             if (!sseRes.ok)
                 throw new Error('Error al conectar con stream: HTTP ' + sseRes.status);
