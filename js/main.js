@@ -934,6 +934,8 @@
                 throw new Error('Binario no encontrado. Asegúrate de que realesrgan-ncnn-vulkan.exe esté en: ' + path.join(extensionRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'));
             }
 
+            const modelName = 'realesrgan-x4plus-anime';
+
             // Directorio temporal (usa TEMP del sistema)
             const tempDir = path.join(process.env.TEMP || process.env.TMP || '.', 'kohari-upscale-' + Date.now());
             if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
