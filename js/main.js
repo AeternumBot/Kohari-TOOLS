@@ -901,14 +901,20 @@
             const path = require('path');
             const { spawn } = require('child_process');
 
-            // Intenta múltiples ubicaciones: proyecto local + instalación CEP
-            const jsDir = typeof __dirname !== 'undefined' ? __dirname : '.';
-            const projectRoot = path.resolve(jsDir, '..');
+            // Obtener la ruta correcta de la extensión
+            let extensionRoot;
+            try {
+                // En CEP, la carpeta de la extensión se obtiene desde el manifiesto
+                extensionRoot = window.__EXTENSION_ROOT__ ||
+                              (typeof __dirname !== 'undefined' ? path.resolve(__dirname, '..') : '.');
+            } catch (_) {
+                extensionRoot = typeof __dirname !== 'undefined' ? path.resolve(__dirname, '..') : '.';
+            }
 
             const possiblePaths = [
-                path.join(projectRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'),
+                path.join(extensionRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'),
                 'C:\\Program Files\\Common Files\\Adobe\\CEP\\extensions\\com.kohari.orc\\tools\\upscaler\\realesrgan-ncnn-vulkan.exe',
-                path.join(process.env.APPDATA || '', '..', 'Local', 'Programs', 'Upscayl', 'resources', 'realesrgan-ncnn-vulkan.exe')
+                'C:\\Users\\levoh\\Desktop\\Kohari ORC\\tools\\upscaler\\realesrgan-ncnn-vulkan.exe'
             ];
 
             let binaryPath = null;
@@ -916,15 +922,16 @@
                 try {
                     if (fs.existsSync(p)) {
                         binaryPath = p;
-                        console.log('[Kohari] Binario encontrado en:', p);
+                        console.log('[Kohari] Binario encontrado:', p);
                         break;
                     }
                 } catch (_) {}
             }
 
             if (!binaryPath) {
+                console.error('[Kohari] Extensión root:', extensionRoot);
                 console.error('[Kohari] Rutas intentadas:', possiblePaths);
-                throw new Error('Binario local no encontrado en ninguna ubicación.\nCopia realesrgan-ncnn-vulkan.exe en: ' + path.join(projectRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'));
+                throw new Error('Binario no encontrado. Asegúrate de que realesrgan-ncnn-vulkan.exe esté en: ' + path.join(extensionRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'));
             }
 
             // Directorio temporal (usa TEMP del sistema)
