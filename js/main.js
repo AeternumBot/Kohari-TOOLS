@@ -901,17 +901,26 @@
             const path = require('path');
             const { spawn } = require('child_process');
 
-            // Ruta relativa al root de la extensión CEP
-            const extensionRoot = (typeof __dirname !== 'undefined') ? __dirname : '.';
-            const toolsPath  = path.join(extensionRoot, 'tools', 'upscaler');
-            const binaryPath = path.join(toolsPath, 'realesrgan-ncnn-vulkan.exe');
-            const modelName  = 'realesrgan-x4plus-anime';
+            // Intenta múltiples ubicaciones: proyecto local + instalación CEP
+            const possiblePaths = [
+                'tools/upscaler/realesrgan-ncnn-vulkan.exe',
+                path.join(__dirname || '.', 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'),
+                'C:\\Program Files\\Common Files\\Adobe\\CEP\\extensions\\com.kohari.orc\\tools\\upscaler\\realesrgan-ncnn-vulkan.exe'
+            ];
 
-            if (!fs.existsSync(binaryPath))
-                throw new Error('Binario local no encontrado: ' + binaryPath + '\nCopia realesrgan-ncnn-vulkan.exe en tools/upscaler/');
+            let binaryPath = null;
+            for (const p of possiblePaths) {
+                if (fs.existsSync(p)) {
+                    binaryPath = p;
+                    break;
+                }
+            }
 
-            // Directorio temporal dentro de la extensión
-            const tempDir = path.join(extensionRoot, '.temp-upscale');
+            if (!binaryPath)
+                throw new Error('Binario local no encontrado en ninguna ubicación.\nCopia realesrgan-ncnn-vulkan.exe en: tools/upscaler/');
+
+            // Directorio temporal (usa TEMP del sistema)
+            const tempDir = path.join(process.env.TEMP || process.env.TMP || '.', 'kohari-upscale-' + Date.now());
             if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
             const stamp      = Date.now();
@@ -940,7 +949,7 @@
 
                 proc.on('close', (code) => {
                     try {
-                        // Limpiar input sin importar el resultado
+                        // Limpiar archivos temporales
                         try { fs.unlinkSync(inputPath); } catch (_) {}
 
                         if (code !== 0)
@@ -951,6 +960,7 @@
 
                         const resultBase64 = 'data:image/png;base64,' + fs.readFileSync(outputPath).toString('base64');
                         try { fs.unlinkSync(outputPath); } catch (_) {}
+                        try { fs.rmdirSync(tempDir); } catch (_) {}
                         resolve(resultBase64);
                     } catch (err) {
                         reject(err);
