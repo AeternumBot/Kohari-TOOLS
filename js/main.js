@@ -902,22 +902,30 @@
             const { spawn } = require('child_process');
 
             // Intenta múltiples ubicaciones: proyecto local + instalación CEP
+            const jsDir = typeof __dirname !== 'undefined' ? __dirname : '.';
+            const projectRoot = path.resolve(jsDir, '..');
+
             const possiblePaths = [
-                'tools/upscaler/realesrgan-ncnn-vulkan.exe',
-                path.join(__dirname || '.', 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'),
-                'C:\\Program Files\\Common Files\\Adobe\\CEP\\extensions\\com.kohari.orc\\tools\\upscaler\\realesrgan-ncnn-vulkan.exe'
+                path.join(projectRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'),
+                'C:\\Program Files\\Common Files\\Adobe\\CEP\\extensions\\com.kohari.orc\\tools\\upscaler\\realesrgan-ncnn-vulkan.exe',
+                path.join(process.env.APPDATA || '', '..', 'Local', 'Programs', 'Upscayl', 'resources', 'realesrgan-ncnn-vulkan.exe')
             ];
 
             let binaryPath = null;
             for (const p of possiblePaths) {
-                if (fs.existsSync(p)) {
-                    binaryPath = p;
-                    break;
-                }
+                try {
+                    if (fs.existsSync(p)) {
+                        binaryPath = p;
+                        console.log('[Kohari] Binario encontrado en:', p);
+                        break;
+                    }
+                } catch (_) {}
             }
 
-            if (!binaryPath)
-                throw new Error('Binario local no encontrado en ninguna ubicación.\nCopia realesrgan-ncnn-vulkan.exe en: tools/upscaler/');
+            if (!binaryPath) {
+                console.error('[Kohari] Rutas intentadas:', possiblePaths);
+                throw new Error('Binario local no encontrado en ninguna ubicación.\nCopia realesrgan-ncnn-vulkan.exe en: ' + path.join(projectRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'));
+            }
 
             // Directorio temporal (usa TEMP del sistema)
             const tempDir = path.join(process.env.TEMP || process.env.TMP || '.', 'kohari-upscale-' + Date.now());
