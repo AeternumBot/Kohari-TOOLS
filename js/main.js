@@ -715,15 +715,19 @@
             throw new Error('No se pudo localizar waifu2x-ncnn-vulkan en:\n' + possiblePaths.join('\n'));
         }
 
+        // Obtener directorio del binario para construir ruta del modelo
+        let binaryDir = binaryPath.substring(0, binaryPath.lastIndexOf(isWin ? '\\' : '/'));
+        let modelPath = binaryDir + (isWin ? '\\' : '/') + 'models-cunet';
+
         // Paso 3: Invocar waifu2x-ncnn-vulkan
         // Flags:
         //   -i  archivo entrada
         //   -o  archivo salida PNG
         //   -n 0  denoise minimo (texto limpio, sin artefactos)
         //   -s 2  factor escala (unico soporte base de waifu2x)
-        //   -m models-cunet  modelo ligero, buena calidad anime/manga
+        //   -m models-cunet  modelo (ruta absoluta para evitar problemas con working directory)
         //   -f png  formato salida explicito
-        const args = ['-i', inNative, '-o', outNative, '-n', '0', '-s', String(WAIFU2X_SCALE), '-m', 'models-cunet', '-f', 'png'];
+        const args = ['-i', inNative, '-o', outNative, '-n', '0', '-s', String(WAIFU2X_SCALE), '-m', modelPath, '-f', 'png'];
 
         await new Promise(function(resolve, reject) {
             if (!window.cep || !window.cep.process || typeof window.cep.process.createProcess !== 'function') {
