@@ -726,8 +726,9 @@
         //   -n 0  denoise minimo (texto limpio, sin artefactos)
         //   -s 2  factor escala (unico soporte base de waifu2x)
         //   -m models-cunet  modelo (ruta absoluta para evitar problemas con working directory)
+        //   -g -1  fuerza CPU (evita problemas de Vulkan/GPU)
         //   -f png  formato salida explicito
-        const args = ['-i', inNative, '-o', outNative, '-n', '0', '-s', String(WAIFU2X_SCALE), '-m', modelPath, '-f', 'png'];
+        const args = ['-i', inNative, '-o', outNative, '-n', '0', '-s', String(WAIFU2X_SCALE), '-m', modelPath, '-g', '-1', '-f', 'png'];
 
         await new Promise(function(resolve, reject) {
             if (!window.cep || !window.cep.process || typeof window.cep.process.createProcess !== 'function') {
