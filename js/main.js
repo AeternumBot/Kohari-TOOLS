@@ -20,8 +20,6 @@
         currentTextType: 'bubble', // 'bubble' | 'OT' | 'ST'
         ocrEngine: 'local', // 'local' | 'gemini'
         apiKey: '',
-        upscaleEngine: 'local', // 'local' | 'hfgpu' | 'hfcpu'
-        hfGpuToken: '',
         strips: [{ id: 1, label: 'Tira 1', bubbles: [] }],
         currentStripIndex: 0,
         options: {
@@ -81,9 +79,6 @@
             upscaleWithAIBtn:    document.getElementById('upscaleWithAIBtn'),
             upscaleStatus:       document.getElementById('upscaleStatus'),
             upscaleStatusText:   document.getElementById('upscaleStatusText'),
-            upscaleEngineInputs: document.querySelectorAll('input[name="upscaleEngine"]'),
-            hfGpuToken:          document.getElementById('upscaleApiToken'),
-            upscaleTokenContainer: document.getElementById('upscaleTokenContainer'),
         };
     }
 
@@ -285,51 +280,6 @@
             });
         }
 
-        // Upscale engine selector
-        if (elements.upscaleEngineInputs) {
-            const updateTokenVisibility = (engine) => {
-                // El token HF solo aplica a los motores de Hugging Face, no al local
-                const needsToken = (engine === 'hfgpu');
-                if (elements.upscaleTokenContainer)
-                    elements.upscaleTokenContainer.style.display = needsToken ? 'flex' : 'none';
-                if (elements.hfGpuToken && needsToken)
-                    elements.hfGpuToken.placeholder = 'Token hf_... (Hugging Face, opcional)';
-            };
-
-            elements.upscaleEngineInputs.forEach(input => {
-                input.addEventListener('change', (e) => {
-                    state.upscaleEngine = e.target.value;
-                    localStorage.setItem('kohariUpscale_engine', state.upscaleEngine);
-
-                    document.querySelectorAll('#upscaleEngineOptions .engine-option').forEach(el => el.classList.remove('selected'));
-                    e.target.closest('.engine-option').classList.add('selected');
-
-                    updateTokenVisibility(state.upscaleEngine);
-                });
-            });
-            // Cargar estado guardado
-            const savedUpscaleEngine = localStorage.getItem('kohariUpscale_engine');
-            if (savedUpscaleEngine) {
-                state.upscaleEngine = savedUpscaleEngine;
-                elements.upscaleEngineInputs.forEach(input => { input.checked = (input.value === savedUpscaleEngine); });
-                document.querySelectorAll('#upscaleEngineOptions .engine-option').forEach(el => el.classList.remove('selected'));
-                const checkedInput = document.querySelector(`input[name="upscaleEngine"][value="${savedUpscaleEngine}"]`);
-                if (checkedInput) checkedInput.closest('.engine-option').classList.add('selected');
-            }
-            updateTokenVisibility(state.upscaleEngine);
-        }
-        if (elements.hfGpuToken) {
-            const savedUpscaleToken = localStorage.getItem('kohariUpscale_token');
-            if (savedUpscaleToken) {
-                state.hfGpuToken = savedUpscaleToken;
-                elements.hfGpuToken.value = savedUpscaleToken;
-            }
-            elements.hfGpuToken.addEventListener('input', (e) => {
-                state.hfGpuToken = e.target.value.trim();
-                localStorage.setItem('kohariUpscale_token', state.hfGpuToken);
-            });
-        }
-
         if (elements.stripInput) {
             elements.stripInput.addEventListener('change', (e) => {
                 let val = parseInt(e.target.value);
@@ -381,8 +331,6 @@
         const checkedEngine = document.querySelector('input[name="ocrEngine"]:checked');
         if (checkedEngine) checkedEngine.closest('.engine-option').classList.add('selected');
 
-        const checkedUpscaleEngine = document.querySelector('input[name="upscaleEngine"]:checked');
-        if (checkedUpscaleEngine) checkedUpscaleEngine.closest('.engine-option').classList.add('selected');
     }
 
 
@@ -624,7 +572,7 @@
 
         // Intentar con timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 900000); // 15m timeout (CPU puede tardar)
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10m timeout
 
         try {
             const response = await fetch(IOPAINT_URL, {
@@ -699,29 +647,11 @@
     }
 
     // ============================================
-    // UPSCALE CON IA — REAL-ESRGAN (HF SPACES)
+    // UPSCALE LOCAL — WAIFU2X-NCNN-VULKAN
     // ============================================
 
-    const UPSCALE_CONFIG = {
-        PRIMARY: {
-            NAME:       'GPU (Rápido)',
-            HF_SPACE:   'https://nick088-real-esrgan-pytorch.hf.space',
-            HF_TOKEN:   '',      // <--- PEGA TU TOKEN AQUÍ (hf_...)
-            TYPE:       'gradio4',
-            SCALE:      4,
-            TIMEOUT_MS: 180000   // 3 minutos (GPU es rápida)
-        },
-        FALLBACK: {
-            NAME:       'CPU (Ilimitado)',
-            HF_SPACE:   'https://fabrice-tiercelin-realesrgan-api.hf.space',
-            HF_TOKEN:   '',      // <--- PEGA TU TOKEN HF AQUÍ SI LO TIENES (hf_...)
-            TYPE:       'gradio5',
-            SCALE:      4,
-            TIMEOUT_MS: 900000   // 15 minutos (CPU es lento pero confiable)
-        }
-    };
-
-    const FALLBACK_URL = 'https://fabrice-tiercelin-realesrgan.hf.space';
+    // Factor de escala fijo para waifu2x
+    const WAIFU2X_SCALE = 2;
 
     function showUpscaleStatus(show, text) {
         if (elements.upscaleStatus)
@@ -730,8 +660,110 @@
             elements.upscaleStatusText.textContent = text;
     }
 
+    /**
+     * Procesa un chunk de imagen con waifu2x-ncnn-vulkan.
+     * Escribe el chunk JPEG temporal, invoca el binario via cep.process,
+     * lee la PNG de salida y la devuelve como base64 puro.
+     *
+     * Modelo: cunet (ligero, alta calidad para anime/manga).
+     * Denoise: 0 (minimo, ideal para texto limpio sin artefactos).
+     *
+     * @param {string} chunkB64    - Base64 puro del chunk JPEG
+     * @param {string} tempPath    - Carpeta temporal (ruta nativa, sin file://)
+     * @param {number} exportIndex - Timestamp unico de la sesion
+     * @param {number} chunkIndex  - Indice del chunk
+     * @param {string} extPath     - Path de la extension CEP (para localizar el binario)
+     * @returns {Promise<string>}  - Base64 puro de la PNG escalada
+     */
+    async function upscaleWithWaifu2x(chunkB64, tempPath, exportIndex, chunkIndex, extPath) {
+        const isWin = navigator.appVersion.indexOf('Win') !== -1;
+
+        const inFile  = tempPath + '/kohari_w2x_in_'  + exportIndex + '_' + chunkIndex + '.jpg';
+        const outFile = tempPath + '/kohari_w2x_out_' + exportIndex + '_' + chunkIndex + '.png';
+        const inNative  = isWin ? inFile.replace(/\//g, '\\')  : inFile;
+        const outNative = isWin ? outFile.replace(/\//g, '\\') : outFile;
+
+        // Paso 1: Escribir chunk JPEG al disco
+        if (!window.cep || !window.cep.fs)
+            throw new Error('CEP FS no disponible. Abre el panel desde Photoshop.');
+
+        const writeResult = window.cep.fs.writeFile(inNative, chunkB64, window.cep.encoding.Base64);
+        if (writeResult.err !== window.cep.fs.NO_ERROR)
+            throw new Error('Error escribiendo chunk ' + chunkIndex + ': codigo ' + writeResult.err);
+
+        // Paso 2: Localizar binario waifu2x-ncnn-vulkan en tools/upscaler/
+        const binaryName = isWin ? 'waifu2x-ncnn-vulkan.exe' : 'waifu2x-ncnn-vulkan';
+        const binaryPath = isWin
+            ? (extPath + '\\tools\\upscaler\\' + binaryName)
+            : (extPath + '/tools/upscaler/' + binaryName);
+
+        // Paso 3: Invocar waifu2x-ncnn-vulkan
+        // Flags:
+        //   -i  archivo entrada
+        //   -o  archivo salida PNG
+        //   -n 0  denoise minimo (texto limpio, sin artefactos)
+        //   -s 2  factor escala (unico soporte base de waifu2x)
+        //   -m models-cunet  modelo ligero, buena calidad anime/manga
+        //   -f png  formato salida explicito
+        const args = ['-i', inNative, '-o', outNative, '-n', '0', '-s', String(WAIFU2X_SCALE), '-m', 'models-cunet', '-f', 'png'];
+
+        await new Promise(function(resolve, reject) {
+            if (!window.cep || !window.cep.process || typeof window.cep.process.createProcess !== 'function') {
+                reject(new Error('cep.process no disponible. Requiere Photoshop CEP 9+.'));
+                return;
+            }
+
+            var proc = window.cep.process.createProcess(binaryPath, args);
+
+            if (!proc || typeof proc.pid === 'undefined' || proc.pid === -1) {
+                reject(new Error(
+                    'No se pudo iniciar waifu2x-ncnn-vulkan.\n' +
+                    'Verifica que el binario existe en: ' + binaryPath
+                ));
+                return;
+            }
+
+            var stderrLog = '';
+
+            proc.onStdout = function(data) {
+                console.log('[waifu2x stdout]', data);
+            };
+
+            proc.onStderr = function(data) {
+                stderrLog += data;
+                console.log('[waifu2x]', data);
+            };
+
+            proc.onComplete = function(exitCode) {
+                if (exitCode === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(
+                        'waifu2x termino con codigo ' + exitCode + '.\n' +
+                        'Log: ' + stderrLog.slice(-300)
+                    ));
+                }
+            };
+        });
+
+        // Paso 4: Leer PNG resultado
+        var readResult = window.cep.fs.readFile(outNative, window.cep.encoding.Base64);
+        if (readResult.err !== window.cep.fs.NO_ERROR)
+            throw new Error('Error leyendo PNG resultado del chunk ' + chunkIndex + ': codigo ' + readResult.err);
+
+        var b64 = readResult.data;
+
+        // Paso 5: Limpiar temporales de entrada/salida del chunk
+        try {
+            window.cep.fs.deleteFile(inNative);
+            window.cep.fs.deleteFile(outNative);
+        } catch (e) { /* no critico */ }
+
+        return b64.includes(',') ? b64.split(',')[1] : b64;
+    }
+
     async function handleUpscaleWithAI() {
-        if (state.isProcessing) { showToast('Ya se está procesando...', 'warning'); return; }
+        if (state.isProcessing) { showToast('Ya se esta procesando...', 'warning'); return; }
 
         if (!window.KohariPhotoshop || !window.KohariPhotoshop.isAvailable()) {
             showToast('Photoshop no detectado. Abre el panel desde Photoshop.', 'error');
@@ -739,6 +771,16 @@
         }
 
         const api = window.KohariPhotoshop.api;
+
+        // Obtener path de la extension CEP para localizar el binario
+        let extPath;
+        try {
+            extPath = api.csInterface.getSystemPath('extension');
+            if (!extPath) throw new Error('path vacio');
+        } catch (e) {
+            showToast('No se pudo obtener el path de la extension: ' + e.message, 'error');
+            return;
+        }
 
         try {
             state.isProcessing = true;
@@ -760,7 +802,7 @@
 
             const { imagePath, originalWidth, originalHeight, docName } = exportResult;
 
-            // 3. Leer JPEG como base64 y cargar en un objeto Image
+            // 3. Leer JPEG como base64 y cargar en Image
             showUpscaleStatus(true, 'Cargando imagen para dividir...');
             const imageBase64 = await api.readFileAsBase64(imagePath);
             if (!imageBase64)
@@ -774,10 +816,11 @@
             });
 
             // 4. Calcular bloques (Tiling)
-            const CHUNK_HEIGHT = 1000;  // Reducido: chunks más pequeños = procesamiento más rápido
-            const OVERLAP = 50;
+            // 512px permite paralelizacion agresiva; waifu2x los procesa rapido
+            const CHUNK_HEIGHT = 512;
+            const OVERLAP = 32;
             let currentY = 0;
-            let chunks = [];
+            const chunks = [];
 
             while (currentY < img.height) {
                 let sliceHeight = CHUNK_HEIGHT + OVERLAP;
@@ -793,8 +836,8 @@
                 .replace(/\/$/, '');
             safePath = decodeURIComponent(safePath);
 
-            // 5. Renderizar todos los chunks en canvas (secuencial, rápido)
-            showUpscaleStatus(true, `Preparando ${chunks.length} sección(es)...`);
+            // 5. Renderizar todos los chunks en canvas (secuencial, rapido)
+            showUpscaleStatus(true, `Preparando ${chunks.length} seccion(es)...`);
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const chunkDataArray = chunks.map((chunk) => {
@@ -806,32 +849,30 @@
                 return canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
             });
 
-            // 6. Procesar todos los chunks en PARALELO
-            const engineLabel = { local: 'Local', hfgpu: 'HF GPU', hfcpu: 'HF CPU' }[state.upscaleEngine] || state.upscaleEngine;
-            showUpscaleStatus(true, `Enviando ${chunks.length} sección(es) a ${engineLabel}...`);
+            // 6. Procesar todos los chunks en PARALELO con waifu2x local
+            showUpscaleStatus(true, `Enviando ${chunks.length} seccion(es) a waifu2x...`);
             let completedCount = 0;
 
             const upscaledB64Array = await Promise.all(
                 chunkDataArray.map(async (chunkB64, i) => {
-                    const prefix = `[${i + 1}/${chunks.length}]`;
-                    const raw = await upscaleWithSelectedEngine(chunkB64, UPSCALE_CONFIG.PRIMARY.SCALE, prefix);
-                    if (!raw) throw new Error(`Sección ${i + 1} no devolvió imagen.`);
+                    const raw = await upscaleWithWaifu2x(chunkB64, safePath, exportIndex, i, extPath);
+                    if (!raw) throw new Error(`Seccion ${i + 1} no devolvio imagen.`);
                     completedCount++;
                     showUpscaleStatus(true, `Completadas ${completedCount}/${chunks.length} secciones...`);
                     return raw.includes(',') ? raw.split(',')[1] : raw;
                 })
             );
 
-            // 7. Escribir archivos resultado
+            // 7. Escribir archivos resultado para Photoshop
             const isWin = navigator.appVersion.indexOf('Win') !== -1;
-            let upscaledPaths = [];
+            const upscaledPaths = [];
             for (let i = 0; i < upscaledB64Array.length; i++) {
                 const upFilePath = safePath + '/kohari_upscaled_' + exportIndex + '_chunk_' + i + '.png';
                 if (!window.cep || !window.cep.fs) throw new Error('CEP FS no disponible.');
                 const writeTo = isWin ? upFilePath.replace(/\//g, '\\') : upFilePath;
                 const wr = window.cep.fs.writeFile(writeTo, upscaledB64Array[i], window.cep.encoding.Base64);
                 if (wr.err !== window.cep.fs.NO_ERROR)
-                    throw new Error(`Error al escribir sección ${i + 1}: ` + wr.err);
+                    throw new Error(`Error al escribir seccion ${i + 1}: ` + wr.err);
                 upscaledPaths.push(upFilePath);
             }
 
@@ -843,16 +884,16 @@
             if (!pasteResult.success)
                 throw new Error('No se pudo pegar: ' + (pasteResult.error || 'desconocido'));
 
-            // 9. Limpiar temporales
+            // 9. Limpiar temporales finales
             try {
                 for (const p of upscaledPaths) {
                     const delPath = isWin ? p.replace(/\//g, '\\') : p;
                     window.cep.fs.deleteFile(delPath);
                 }
-            } catch (e) { /* no crítico */ }
+            } catch (e) { /* no critico */ }
 
             showUpscaleStatus(false);
-            showToast('¡Mejora completada! Capa: ' + pasteResult.layerName, 'success');
+            showToast('Mejora completada! Capa: ' + pasteResult.layerName, 'success');
             updateStatus('Upscale completado: "' + pasteResult.layerName + '"', 'ready');
 
         } catch (err) {
@@ -865,337 +906,6 @@
             elements.upscaleWithAIBtn.disabled = false;
         }
     }
-
-    /**
-     * Dispatcher: elige motor según selección del usuario.
-     */
-    async function upscaleWithSelectedEngine(imageBase64, scale, prefixText = '') {
-        switch (state.upscaleEngine) {
-            case 'local':
-                // Upscayl Lite: modelo ONNX local, sin API, ultra-rápido
-                return await upscaleWithLocal(imageBase64, scale);
-            case 'hfgpu': {
-                const cfg = Object.assign({}, UPSCALE_CONFIG.PRIMARY);
-                if (state.hfGpuToken) cfg.HF_TOKEN = state.hfGpuToken;
-                return await upscaleGradio4(imageBase64, scale, prefixText, cfg);
-            }
-            case 'hfcpu': {
-                const cfg = Object.assign({}, UPSCALE_CONFIG.FALLBACK);
-                if (state.hfGpuToken) cfg.HF_TOKEN = state.hfGpuToken;
-                return await upscaleGradio5(imageBase64, scale, prefixText, cfg);
-            }
-            default:
-                // Upscayl Lite: modelo ONNX local, sin API, ultra-rápido
-                return await upscaleWithLocal(imageBase64, scale);
-        }
-    }
-
-
-    /**
-     * Upscale local con realesrgan-ncnn-vulkan.exe (Upscayl Lite).
-     * Sin API, sin token, 100% offline. Modelo: realesrgan-x4plus-anime.
-     */
-    async function upscaleWithLocal(imageBase64, scale) {
-        try {
-            const fs   = require('fs');
-            const path = require('path');
-            const { spawn } = require('child_process');
-
-            // Obtener la ruta correcta de la extensión
-            let extensionRoot;
-            try {
-                // En CEP, la carpeta de la extensión se obtiene desde el manifiesto
-                extensionRoot = window.__EXTENSION_ROOT__ ||
-                              (typeof __dirname !== 'undefined' ? path.resolve(__dirname, '..') : '.');
-            } catch (_) {
-                extensionRoot = typeof __dirname !== 'undefined' ? path.resolve(__dirname, '..') : '.';
-            }
-
-            const possiblePaths = [
-                path.join(extensionRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'),
-                'C:\\Program Files\\Common Files\\Adobe\\CEP\\extensions\\com.kohari.orc\\tools\\upscaler\\realesrgan-ncnn-vulkan.exe',
-                'C:\\Users\\levoh\\Desktop\\Kohari ORC\\tools\\upscaler\\realesrgan-ncnn-vulkan.exe'
-            ];
-
-            let binaryPath = null;
-            for (const p of possiblePaths) {
-                try {
-                    if (fs.existsSync(p)) {
-                        binaryPath = p;
-                        console.log('[Kohari] Binario encontrado:', p);
-                        break;
-                    }
-                } catch (_) {}
-            }
-
-            if (!binaryPath) {
-                console.error('[Kohari] Extensión root:', extensionRoot);
-                console.error('[Kohari] Rutas intentadas:', possiblePaths);
-                throw new Error('Binario no encontrado. Asegúrate de que realesrgan-ncnn-vulkan.exe esté en: ' + path.join(extensionRoot, 'tools', 'upscaler', 'realesrgan-ncnn-vulkan.exe'));
-            }
-
-            const modelName = 'realesrgan-x4plus-anime';
-
-            // Directorio temporal (usa TEMP del sistema)
-            const tempDir = path.join(process.env.TEMP || process.env.TMP || '.', 'kohari-upscale-' + Date.now());
-            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-
-            const stamp      = Date.now();
-            const inputPath  = path.join(tempDir, 'input_'  + stamp + '.jpg');
-            const outputPath = path.join(tempDir, 'output_' + stamp + '_4x.png');
-
-            // Escribir JPEG de entrada desde base64
-            const cleanB64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-            fs.writeFileSync(inputPath, Buffer.from(cleanB64, 'base64'));
-
-            showUpscaleStatus(true, 'Local: procesando con Real-ESRGAN...');
-
-            return await new Promise((resolve, reject) => {
-                const proc = spawn(binaryPath, [
-                    '-i', inputPath,
-                    '-o', outputPath,
-                    '-n', modelName,
-                    '-s', String(scale || 4)
-                ], { stdio: 'pipe' });
-
-                let stderr = '';
-                proc.stderr.on('data', (d) => {
-                    stderr += d.toString();
-                    console.log('[Upscayl Local]', d.toString().trim());
-                });
-
-                proc.on('close', (code) => {
-                    try {
-                        // Limpiar archivos temporales
-                        try { fs.unlinkSync(inputPath); } catch (_) {}
-
-                        if (code !== 0)
-                            throw new Error('realesrgan-ncnn-vulkan salió con código ' + code + ': ' + stderr.slice(0, 300));
-
-                        if (!fs.existsSync(outputPath))
-                            throw new Error('El binario terminó pero no generó el archivo de salida: ' + outputPath);
-
-                        const resultBase64 = 'data:image/png;base64,' + fs.readFileSync(outputPath).toString('base64');
-                        try { fs.unlinkSync(outputPath); } catch (_) {}
-                        try { fs.rmdirSync(tempDir); } catch (_) {}
-                        resolve(resultBase64);
-                    } catch (err) {
-                        reject(err);
-                    }
-                });
-
-                proc.on('error', (err) => {
-                    reject(new Error('Error al lanzar el upscaler local: ' + err.message));
-                });
-            });
-
-        } catch (error) {
-            console.error('[Kohari] upscaleWithLocal error:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Función principal que intenta usar el servidor GPU y cae al CPU si hay error de cuota.
-     */
-    async function upscaleWithRealESRGAN(imageBase64, scale, prefixText = '') {
-        try {
-            // Intento 1: GPU (Nick088)
-            return await upscaleGradio4(imageBase64, scale, prefixText, UPSCALE_CONFIG.PRIMARY);
-        } catch (err) {
-            const isQuotaError = err.message.includes('quota') || err.message.includes('403') || err.message.includes('ZeroGPU');
-            if (isQuotaError) {
-                console.warn('[Kohari] Cuota GPU agotada, usando Fallback CPU...');
-                showToast('Cuota GPU agotada. Usando servidor de respaldo (más lento)...', 'warning');
-                return await upscaleGradio5(imageBase64, scale, prefixText, UPSCALE_CONFIG.FALLBACK);
-            }
-            throw err;
-        }
-    }
-
-    /**
-     * Implementación para Gradio 4 (Nick088)
-     */
-    async function upscaleGradio4(imageBase64, scale, prefixText, config) {
-        const { HF_SPACE, HF_TOKEN, TIMEOUT_MS } = config;
-        const authHeaders = HF_TOKEN ? { 'Authorization': 'Bearer ' + HF_TOKEN } : {};
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-        const sessionHash = 'kohari_' + Math.random().toString(36).substr(2, 9);
-
-        try {
-            const blob = base64ToBlob(imageBase64, 'image/jpeg');
-            const form = new FormData();
-            form.append('files', blob, 'tira.jpg');
-
-            showUpscaleStatus(true, `${prefixText} Subiendo a GPU...`);
-            const uploadRes = await fetch(`${HF_SPACE}/upload`, {
-                method: 'POST', body: form, signal: controller.signal,
-                headers: authHeaders
-            });
-            if (!uploadRes.ok) throw new Error('HTTP ' + uploadRes.status);
-
-            const uploadData = await uploadRes.json();
-            const uploadedPath = Array.isArray(uploadData) ? uploadData[0] : uploadData;
-
-            showUpscaleStatus(true, `${prefixText} Encolando GPU...`);
-            const joinRes = await fetch(`${HF_SPACE}/queue/join`, {
-                method: 'POST',
-                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
-                body: JSON.stringify({
-                    data: [{ path: uploadedPath, meta: { _type: 'gradio.FileData' } }, scale],
-                    fn_index: 0,
-                    session_hash: sessionHash
-                }),
-                signal: controller.signal
-            });
-            if (!joinRes.ok) throw new Error('HTTP ' + joinRes.status);
-            const joinData = await joinRes.json();
-
-            return await monitorQueue(HF_SPACE, sessionHash, authHeaders, controller, prefixText, timer);
-        } catch (e) {
-            clearTimeout(timer);
-            throw e;
-        }
-    }
-
-    /**
-     * Implementación para Gradio 5 (Fabrice)
-     */
-    async function upscaleGradio5(imageBase64, scale, prefixText, config) {
-        const HF_SPACE = FALLBACK_URL;
-        const { HF_TOKEN, TIMEOUT_MS } = config;
-        const authHeaders = HF_TOKEN ? { 'Authorization': 'Bearer ' + HF_TOKEN } : {};
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-        try {
-            const blob = base64ToBlob(imageBase64, 'image/jpeg');
-            const form = new FormData();
-            form.append('files', blob, 'tira.jpg');
-
-            showUpscaleStatus(true, `${prefixText} Subiendo a CPU...`);
-            const uploadRes = await fetch(`${HF_SPACE}/gradio_api/upload`, {
-                method: 'POST', body: form, signal: controller.signal,
-                headers: authHeaders
-            });
-            const uploadData = await uploadRes.json();
-            const uploadedPath = uploadData[0];
-
-            showUpscaleStatus(true, `${prefixText} Iniciando CPU...`);
-            const callRes = await fetch(`${HF_SPACE}/gradio_api/call/predict`, {
-                method: 'POST',
-                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
-                body: JSON.stringify({
-                    data: [{ path: uploadedPath, meta: { _type: 'gradio.FileData' } }, 4] // Fabrice usa 4 como número
-                }),
-                signal: controller.signal
-            });
-            const { event_id } = await callRes.json();
-
-            const sseRes = await fetch(`${HF_SPACE}/gradio_api/call/predict/${event_id}`, {
-                signal: controller.signal, headers: authHeaders
-            });
-
-            const result = await new Promise((resolve, reject) => {
-                const reader = sseRes.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                let lastEvent = '';
-
-                function process() {
-                    reader.read().then(({ done, value }) => {
-                        if (done) { reject(new Error('Stream cerrado')); return; }
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop();
-                        for (const line of lines) {
-                            if (line.startsWith('event:')) lastEvent = line.replace('event:', '').trim();
-                            if (line.startsWith('data:')) {
-                                const data = line.replace('data:', '').trim();
-                                if (lastEvent === 'complete') {
-                                    try { resolve(JSON.parse(data)[0]); } catch(e) {}
-                                    return;
-                                }
-                                if (lastEvent === 'error') { reject(new Error('Error CPU: ' + data)); return; }
-                            }
-                        }
-                        process();
-                    }).catch(reject);
-                }
-                process();
-            });
-
-            clearTimeout(timer);
-            return await downloadAndConvertToPNG(result, HF_SPACE, controller, prefixText);
-        } catch (e) {
-            clearTimeout(timer);
-            throw e;
-        }
-    }
-
-    async function monitorQueue(HF_SPACE, sessionHash, authHeaders, controller, prefixText, timer) {
-        const sseRes = await fetch(`${HF_SPACE}/queue/data?session_hash=${sessionHash}`, {
-            signal: controller.signal, headers: authHeaders
-        });
-        const result = await new Promise((resolve, reject) => {
-            const reader = sseRes.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            function process() {
-                reader.read().then(({ done, value }) => {
-                    if (done) { reject(new Error('Stream cerrado')); return; }
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop();
-                    for (const line of lines) {
-                        if (!line.startsWith('data:')) continue;
-                        const parsed = JSON.parse(line.replace('data:', ''));
-                        if (parsed.msg === 'process_completed') {
-                            if (parsed.output.error) reject(new Error(parsed.output.error));
-                            else resolve(parsed.output.data[0]);
-                            return;
-                        }
-                        if (parsed.msg === 'estimation') showUpscaleStatus(true, `${prefixText} En cola: ${parsed.rank || '?'}`);
-                        if (parsed.msg === 'process_starts') showUpscaleStatus(true, `${prefixText} Procesando...`);
-                    }
-                    process();
-                }).catch(reject);
-            }
-            process();
-        });
-        return await downloadAndConvertToPNG(result, HF_SPACE, controller, prefixText);
-    }
-
-    async function downloadAndConvertToPNG(result, HF_SPACE, controller, prefixText) {
-        const imageUrl = typeof result === 'object' ? (result.url || result.path) : String(result);
-        const finalUrl = imageUrl.startsWith('http') ? imageUrl : `${HF_SPACE}/file=${imageUrl.replace(/^\//, '')}`;
-        
-        showUpscaleStatus(true, `${prefixText} Descargando...`);
-        const imgRes = await fetch(finalUrl, { signal: controller.signal });
-        const imgBlob = await imgRes.blob();
-        
-        const upB64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.readAsDataURL(imgBlob);
-        });
-
-        // Convertir a PNG real
-        showUpscaleStatus(true, `${prefixText} Finalizando...`);
-        return await new Promise((resolve, reject) => {
-            const tmpImg = new Image();
-            tmpImg.onload = () => {
-                const c = document.createElement('canvas');
-                c.width = tmpImg.width;
-                c.height = tmpImg.height;
-                c.getContext('2d').drawImage(tmpImg, 0, 0);
-                resolve(c.toDataURL('image/png'));
-            };
-            tmpImg.src = upB64;
-        });
-    }
-
 
     // ============================================
     // FUNCIÓN PRINCIPAL DE ESCANEO
