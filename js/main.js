@@ -718,11 +718,18 @@
 
         // Obtener directorio del binario para construir ruta del modelo
         let binaryDir = binaryPath.substring(0, binaryPath.lastIndexOf(isWin ? '\\' : '/'));
-        let modelPath = binaryDir + (isWin ? '\\' : '/') + 'models' + (isWin ? '\\' : '/') + 'anime_style_art_rgb';
+        let modelDirPath = binaryDir + (isWin ? '\\' : '/') + 'models';
 
         // Paso 3: Invocar waifu2x-caffe (CPU puro, sin Vulkan)
-        // waifu2x-caffe usa modelo lightweight anime_style_art_rgb (1.2MB, RGB, optimizado para manga)
-        const args = ['-i', inNative, '-o', outNative, '-n', '1', '-s', String(WAIFU2X_SCALE), '-m', modelPath];
+        // waifu2x-caffe flags:
+        //   -i input.jpg          archivo entrada
+        //   -o output.png         archivo salida
+        //   -n 1                  denoise nivel 1 (balance)
+        //   -s 2                  factor x2
+        //   -m noise_scale        modo: denoise + upscale combinado
+        //   --model_dir ./models  directorio raiz de modelos (no ruta completa)
+        //   -p cpu                procesador: CPU mode (fuerza CPU, sin GPU)
+        const args = ['-i', inNative, '-o', outNative, '-n', '1', '-s', String(WAIFU2X_SCALE), '-m', 'noise_scale', '--model_dir', modelDirPath, '-p', 'cpu'];
 
         await new Promise(function(resolve, reject) {
             var useChildProcess = false;
