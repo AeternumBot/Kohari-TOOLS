@@ -693,9 +693,27 @@
 
         // Paso 2: Localizar binario waifu2x-ncnn-vulkan en tools/upscaler/
         const binaryName = isWin ? 'waifu2x-ncnn-vulkan.exe' : 'waifu2x-ncnn-vulkan';
-        const binaryPath = isWin
-            ? (extPath + '\\tools\\upscaler\\' + binaryName)
-            : (extPath + '/tools/upscaler/' + binaryName);
+        const possiblePaths = [
+            isWin ? 'C:\\Users\\levoh\\Desktop\\Kohari ORC\\tools\\upscaler\\' + binaryName : process.env.HOME + '/Desktop/Kohari ORC/tools/upscaler/' + binaryName,
+            isWin ? (extPath + '\\tools\\upscaler\\' + binaryName) : (extPath + '/tools/upscaler/' + binaryName),
+            isWin ? 'C:\\Program Files\\Common Files\\Adobe\\CEP\\extensions\\com.kohari.orc\\tools\\upscaler\\' + binaryName : '/opt/Adobe/CEP/extensions/com.kohari.orc/tools/upscaler/' + binaryName
+        ];
+
+        let binaryPath = null;
+        for (const p of possiblePaths) {
+            try {
+                const stat = window.cep.fs.stat(p);
+                if (stat && stat.data) {
+                    binaryPath = p;
+                    console.log('[Kohari] Binario waifu2x encontrado en:', p);
+                    break;
+                }
+            } catch (_) {}
+        }
+
+        if (!binaryPath) {
+            throw new Error('No se pudo localizar waifu2x-ncnn-vulkan en:\n' + possiblePaths.join('\n'));
+        }
 
         // Paso 3: Invocar waifu2x-ncnn-vulkan
         // Flags:
@@ -718,7 +736,7 @@
             if (!proc || typeof proc.pid === 'undefined' || proc.pid === -1) {
                 reject(new Error(
                     'No se pudo iniciar waifu2x-ncnn-vulkan.\n' +
-                    'Verifica que el binario existe en: ' + binaryPath
+                    'Verificado en: ' + binaryPath
                 ));
                 return;
             }
