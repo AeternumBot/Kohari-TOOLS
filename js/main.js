@@ -720,16 +720,16 @@
         let binaryDir = binaryPath.substring(0, binaryPath.lastIndexOf(isWin ? '\\' : '/'));
         let modelDirPath = binaryDir + (isWin ? '\\' : '/') + 'models';
 
-        // Paso 3: Invocar waifu2x-caffe (CPU puro, sin Vulkan)
+        // Paso 3: Invocar waifu2x-caffe (CPU puro, denoise only)
         // waifu2x-caffe flags:
-        //   -i input.jpg          archivo entrada
-        //   -o output.png         archivo salida
-        //   -n 1                  denoise nivel 1 (balance)
-        //   -s 2                  factor x2
-        //   -m noise_scale        modo: denoise + upscale combinado
-        //   --model_dir ./models  directorio raiz de modelos (no ruta completa)
-        //   -p cpu                procesador: CPU mode (fuerza CPU, sin GPU)
-        const args = ['-i', inNative, '-o', outNative, '-n', '1', '-s', String(WAIFU2X_SCALE), '-m', 'noise_scale', '--model_dir', modelDirPath, '-p', 'cpu'];
+        //   -i input.jpg            archivo entrada
+        //   -o output.png           archivo salida
+        //   -n 3                    denoise nivel 3 (máximo, limpia bien)
+        //   -m noise                modo: solo denoise (sin upscale)
+        //   --model_dir ./models    directorio raiz de modelos
+        //   -l anime_style_art_rgb  modelo anime (optimizado para manga, sin upscale)
+        //   -p cpu                  procesador: CPU mode (fuerza CPU, sin GPU)
+        const args = ['-i', inNative, '-o', outNative, '-n', '3', '-m', 'noise', '--model_dir', modelDirPath, '-l', 'anime_style_art_rgb', '-p', 'cpu'];
 
         await new Promise(function(resolve, reject) {
             var useChildProcess = false;
