@@ -730,44 +730,83 @@
         //   -f png  formato salida explicito
         const args = ['-i', inNative, '-o', outNative, '-n', '0', '-s', String(WAIFU2X_SCALE), '-m', modelPath, '-g', '-1', '-f', 'png'];
 
-        await new Promise(function(resolve, reject) {
-            if (!window.cep || !window.cep.process || typeof window.cep.process.createProcess !== 'function') {
-                reject(new Error('cep.process no disponible. Requiere Photoshop CEP 9+.'));
-                return;
+        // Intentar con child_process (Node.js) primero, fallback a cep.process
+        let useChildProcess = false;
+        try {
+            if (typeof require !== 'undefined' && typeof require('child_process') !== 'undefined') {
+                useChildProcess = true;
             }
+        } catch (e) {
+            useChildProcess = false;
+        }
 
-            var proc = window.cep.process.createProcess(binaryPath, args);
+        if (useChildProcess) {
+            // Usar Node.js child_process (más confiable)
+            const { spawn } = require('child_process');
+            await new Promise(function(resolve, reject) {
+                try {
+                    const proc = spawn(binaryPath, args, { stdio: 'pipe', detached: false });
+                    let stderrLog = '';
 
-            if (!proc || typeof proc.pid === 'undefined' || proc.pid === -1) {
-                reject(new Error(
-                    'No se pudo iniciar waifu2x-ncnn-vulkan.\n' +
-                    'Verificado en: ' + binaryPath
-                ));
-                return;
-            }
+                    proc.stdout.on('data', (data) => {
+                        console.log('[waifu2x]', data.toString());
+                    });
 
-            var stderrLog = '';
+                    proc.stderr.on('data', (data) => {
+                        stderrLog += data.toString();
+                        console.log('[waifu2x err]', data.toString());
+                    });
 
-            proc.onStdout = function(data) {
-                console.log('[waifu2x stdout]', data);
-            };
+                    proc.on('close', (code) => {
+                        if (code === 0) {
+                            resolve();
+                        } else {
+                            reject(new Error('waifu2x código ' + code + ': ' + stderrLog.slice(-200)));
+                        }
+                    });
 
-            proc.onStderr = function(data) {
-                stderrLog += data;
-                console.log('[waifu2x]', data);
-            };
-
-            proc.onComplete = function(exitCode) {
-                if (exitCode === 0) {
-                    resolve();
-                } else {
-                    reject(new Error(
-                        'waifu2x termino con codigo ' + exitCode + '.\n' +
-                        'Log: ' + stderrLog.slice(-300)
-                    ));
+                    proc.on('error', (err) => {
+                        reject(new Error('Error spawn: ' + err.message));
+                    });
+                } catch (err) {
+                    reject(err);
                 }
-            };
-        });
+            });
+        } else {
+            // Fallback a cep.process
+            await new Promise(function(resolve, reject) {
+                if (!window.cep || !window.cep.process || typeof window.cep.process.createProcess !== 'function') {
+                    reject(new Error('cep.process y child_process no disponibles.'));
+                    return;
+                }
+
+                var proc = window.cep.process.createProcess(binaryPath, args);
+
+                if (!proc || typeof proc.pid === 'undefined' || proc.pid === -1) {
+                    reject(new Error('No se pudo iniciar: ' + binaryPath));
+                    return;
+                }
+
+                var stderrLog = '';
+
+                proc.onStdout = function(data) {
+                    console.log('[waifu2x]', data);
+                };
+
+                proc.onStderr = function(data) {
+                    stderrLog += data;
+                    console.log('[waifu2x err]', data);
+                };
+
+                proc.onComplete = function(exitCode) {
+                    if (exitCode === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error('waifu2x código ' + exitCode + ': ' + stderrLog.slice(-200)));
+                    }
+                };
+            });
+        }
 
         // Paso 4: Leer PNG resultado
         var readResult = window.cep.fs.readFile(outNative, window.cep.encoding.Base64);
