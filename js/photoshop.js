@@ -402,68 +402,6 @@
             }
         },
 
-        // ── UPSCALE IA ────────────────────────────────────────────────────────
-
-        /**
-         * Exporta el documento activo aplanado como JPEG para upscale en HF.
-         * Devuelve también las dimensiones originales para poder redimensionar
-         * la capa resultado al tamaño exacto del documento.
-         * @param {string} tempPath - Carpeta temporal
-         * @param {number} index    - Índice único (timestamp)
-         * @returns {Promise<Object>} { success, imagePath, originalWidth, originalHeight }
-         */
-        async exportFullDocument(tempPath, index) {
-            try {
-                const safe = tempPath
-                    .replace(/^file:\/+/i, '')
-                    .replace(/^file:\\+/i, '')
-                    .replace(/\\/g, '/')
-                    .replace(/\/$/, '');
-                const raw = await this.execScript(`exportFullDocument("${safe}", ${index})`);
-                return JSON.parse(raw);
-            } catch (e) {
-                console.error('[Kohari Upscale] exportFullDocument:', e.message);
-                return { success: false, error: e.message };
-            }
-        },
-
-        async pasteAndResizeUpscaled(imagePath, targetWidth, targetHeight, index) {
-            try {
-                const safe = imagePath.replace(/\\/g, '/');
-                const raw  = await this.execScript(
-                    `pasteAndResizeUpscaled("${safe}", ${targetWidth}, ${targetHeight}, ${index})`
-                );
-                return JSON.parse(raw);
-            } catch (e) {
-                console.error('[Kohari Upscale] pasteAndResizeUpscaled:', e.message);
-                return { success: false, error: e.message };
-            }
-        },
-
-        /**
-         * Pega múltiples piezas (tiles) escaladas en Photoshop, las agrupa y
-         * las alinea correctamente usando la superposición definida.
-         * @param {string[]} pathsArray - Array con las rutas de las piezas
-         * @param {number} targetWidth - Ancho original
-         * @param {number} targetHeight - Alto original
-         * @param {number} index - Índice único
-         * @param {number} chunkHeight - Alto original de cada chunk (sin escala)
-         */
-        async pasteUpscaledTiles(pathsArray, targetWidth, targetHeight, index, chunkHeight, docName) {
-            try {
-                const pathsStr = pathsArray.map(p => p.replace(/\\/g, '/')).join("|||");
-                // Escapar comillas en el nombre del documento por si acaso
-                const safeDocName = docName.replace(/"/g, '\\"');
-                const raw = await this.execScript(
-                    `pasteUpscaledTiles("${pathsStr}", ${targetWidth}, ${targetHeight}, ${index}, ${chunkHeight}, "${safeDocName}")`
-                );
-                return JSON.parse(raw);
-            } catch (e) {
-                console.error('[Kohari Upscale] pasteUpscaledTiles:', e.message);
-                return { success: false, error: e.message };
-            }
-        }
-
     };
     // ── Boot ──────────────────────────────────────────────────────────────────
     function init() {
