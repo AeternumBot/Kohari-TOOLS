@@ -12,3 +12,18 @@ Thumbs.db
 # Project specific junk
 Consola
 Kohari
+
+# CREDENCIALES - NUNCA SUBIR A GITHUB
+# API Keys, tokens, y credenciales locales
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+secrets.json
+config.local.json
+
+# Archivos temporales con credenciales (si existen)
+**/temp_credentials*
+**/local_config*
