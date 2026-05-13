@@ -27,3 +27,13 @@ config.local.json
 # Archivos temporales con credenciales (si existen)
 **/temp_credentials*
 **/local_config*
+
+# Large binary files & data
+tessdata/
+node_modules/
+dist/
+build/
+*.traineddata
+*.zip
+*.gz
+*.tar
