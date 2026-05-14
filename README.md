@@ -10,6 +10,20 @@ Una suite híbrida profesional de herramientas para Adobe Photoshop, diseñada e
 # ⚠️ ADVERTENCIA: VERSIÓN BETA ⚠️
 Este software se encuentra actualmente en fase **BETA**. Algunas funciones están en constante mejora.
 
+## 🔧 IMPORTANTE: Actualización de Arquitectura Modular (v2.0.0)
+
+Si has instalado la versión beta anterior y no ves el nuevo Watermark Manager después de actualizar, **debes reinstalar la extensión** para que los archivos desplegables en el directorio correcto se carguen.
+
+**Qué cambió:**
+- Los archivos de módulos ahora se despliegan en `/js/core/`, `/js/modules/`, `/js/shared/` (compatibles con CEP)
+- El `index.html` fue actualizado para cargar todos los módulos en el orden correcto
+- Todas las dependencias ES6 fueron convertidas a referencias globales para compatibilidad con el navegador CEP
+
+**Pasos para actualizar:**
+1. En Photoshop: `Window → Extensions → Kohari TOOLS → (ícono del panel) → Refresh`
+2. Si eso no funciona, desinstala la extensión completamente y vuelve a instalarla
+3. Los cambios se cargarán automáticamente
+
 ## ✅ Estado del Proyecto
 - **Conversor TPL a JSON**: **¡Completamente Funcional!** Convierte archivos .tpl (Tool Presets de Photoshop) a formato JSON compatible con TypeR.
 - **Limpiador de Burbujas**: **¡100% Funcional!** Replica a la perfección la limpieza de texto, rellenando de blanco sin destruir bordes ni unir globos pegados.
