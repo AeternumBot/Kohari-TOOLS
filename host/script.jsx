@@ -342,3 +342,175 @@ function fillBubblesWhite() {
     }
 }
 
+// ============================================
+// WATERMARK REMOVAL EN PHOTOSHOP
+// ============================================
+
+/**
+ * Coloca un PNG como capa "Kohari_Watermark" sobre el documento activo.
+ * La pone en el centro con modo de fusión "Difference" para ayudar a alinear visualmente.
+ */
+function wmPlaceLayer(filePath) {
+    var prevDialogs = app.displayDialogs;
+    app.displayDialogs = DialogModes.NO;
+    try {
+        if (app.documents.length === 0)
+            return '{"success": false, "error": "No hay documento abierto"}';
+
+        var doc = app.activeDocument;
+        var wmFile = new File(filePath);
+        if (!wmFile.exists)
+            return '{"success": false, "error": "Archivo de marca no encontrado: ' + escapeJSON(filePath) + '"}';
+
+        // Eliminar capa previa si existe
+        try {
+            var prev = doc.artLayers.getByName('Kohari_Watermark');
+            if (prev) prev.remove();
+        } catch(e) {}
+
+        // Abrir la marca como documento separado y copiar
+        var wmDoc = app.open(wmFile);
+        wmDoc.selection.selectAll();
+        wmDoc.selection.copy();
+        var wmWidth = wmDoc.width.as('px');
+        var wmHeight = wmDoc.height.as('px');
+        wmDoc.close(SaveOptions.DONOTSAVECHANGES);
+
+        // Pegar como nueva capa en el documento activo
+        app.activeDocument = doc;
+        var newLayer = doc.paste();
+        newLayer.name = 'Kohari_Watermark';
+
+        // Posicionar en el centro del documento
+        var docW = doc.width.as('px');
+        var docH = doc.height.as('px');
+        var lb = newLayer.bounds;
+        var curLeft = parseFloat(lb[0]);
+        var curTop = parseFloat(lb[1]);
+        var targetLeft = (docW - wmWidth) / 2;
+        var targetTop = (docH - wmHeight) / 2;
+        newLayer.translate(targetLeft - curLeft, targetTop - curTop);
+
+        // Modo Difference para ayudar a alinear (se pone negro donde coincide)
+        newLayer.blendMode = BlendMode.DIFFERENCE;
+
+        app.displayDialogs = prevDialogs;
+        return '{"success": true, "layerName": "Kohari_Watermark", "width": ' + wmWidth + ', "height": ' + wmHeight + '}';
+    } catch (e) {
+        app.displayDialogs = prevDialogs;
+        return '{"success": false, "error": "wmPlaceLayer: ' + escapeJSON(e) + '"}';
+    }
+}
+
+/**
+ * Retorna posición y dimensiones de la capa "Kohari_Watermark".
+ */
+function wmGetLayerInfo() {
+    try {
+        if (app.documents.length === 0)
+            return '{"success": false, "error": "No hay documento"}';
+        var doc = app.activeDocument;
+        var layer;
+        try {
+            layer = doc.artLayers.getByName('Kohari_Watermark');
+        } catch(e) {
+            return '{"success": false, "error": "Capa Kohari_Watermark no encontrada. Coloca primero la marca."}';
+        }
+        var b = layer.bounds;
+        var left = parseFloat(b[0]);
+        var top = parseFloat(b[1]);
+        var right = parseFloat(b[2]);
+        var bottom = parseFloat(b[3]);
+        var docW = doc.width.as('px');
+        var docH = doc.height.as('px');
+        return '{"success": true, "left": ' + left + ', "top": ' + top + ', "right": ' + right + ', "bottom": ' + bottom + ', "docWidth": ' + docW + ', "docHeight": ' + docH + '}';
+    } catch (e) {
+        return '{"success": false, "error": "wmGetLayerInfo: ' + escapeJSON(e) + '"}';
+    }
+}
+
+/**
+ * Exporta el documento sin la capa "Kohari_Watermark" como PNG.
+ * Restaura la visibilidad al terminar.
+ */
+function wmExportBackground(tempPath) {
+    var prevDialogs = app.displayDialogs;
+    app.displayDialogs = DialogModes.NO;
+    try {
+        if (app.documents.length === 0)
+            return '{"success": false, "error": "No hay documento"}';
+
+        var doc = app.activeDocument;
+        var bgPath = tempPath + '/kohari_wm_background.png';
+
+        // Ocultar la capa de marca
+        var wmLayer = null;
+        var wasVisible = true;
+        try {
+            wmLayer = doc.artLayers.getByName('Kohari_Watermark');
+            wasVisible = wmLayer.visible;
+            wmLayer.visible = false;
+        } catch(e) {}
+
+        // Duplicar, aplanar y guardar
+        var bgDoc = doc.duplicate();
+        bgDoc.flatten();
+        if (bgDoc.mode !== DocumentMode.RGB) bgDoc.changeMode(ChangeMode.RGB);
+
+        var pngOpts = new PNGSaveOptions();
+        bgDoc.saveAs(new File(bgPath), pngOpts, true, Extension.LOWERCASE);
+        bgDoc.close(SaveOptions.DONOTSAVECHANGES);
+
+        // Restaurar visibilidad
+        if (wmLayer) wmLayer.visible = wasVisible;
+
+        app.displayDialogs = prevDialogs;
+        return '{"success": true, "filePath": "' + bgPath + '"}';
+    } catch (e) {
+        app.displayDialogs = prevDialogs;
+        return '{"success": false, "error": "wmExportBackground: ' + escapeJSON(e) + '"}';
+    }
+}
+
+/**
+ * Pega el resultado limpio como nueva capa "Kohari_Clean_Result" y oculta la capa de marca.
+ */
+function wmApplyResult(filePath) {
+    var prevDialogs = app.displayDialogs;
+    app.displayDialogs = DialogModes.NO;
+    try {
+        var cleanFile = new File(filePath);
+        if (!cleanFile.exists)
+            return '{"success": false, "error": "Archivo limpio no encontrado"}';
+
+        var doc = app.activeDocument;
+
+        // Abrir y copiar el resultado
+        var cleanDoc = app.open(cleanFile);
+        cleanDoc.selection.selectAll();
+        cleanDoc.selection.copy();
+        cleanDoc.close(SaveOptions.DONOTSAVECHANGES);
+
+        // Pegar en el documento activo
+        app.activeDocument = doc;
+        var pastedLayer = doc.paste();
+        pastedLayer.name = 'Kohari_Clean_Result';
+
+        // Posicionar en (0,0)
+        var lb = pastedLayer.bounds;
+        pastedLayer.translate(0 - parseFloat(lb[0]), 0 - parseFloat(lb[1]));
+
+        // Ocultar la capa de marca para que se vea el resultado
+        try {
+            var wmLayer = doc.artLayers.getByName('Kohari_Watermark');
+            wmLayer.visible = false;
+        } catch(e) {}
+
+        app.displayDialogs = prevDialogs;
+        return '{"success": true, "layerName": "Kohari_Clean_Result"}';
+    } catch (e) {
+        app.displayDialogs = prevDialogs;
+        return '{"success": false, "error": "wmApplyResult: ' + escapeJSON(e) + '"}';
+    }
+}
+

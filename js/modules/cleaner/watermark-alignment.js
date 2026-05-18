@@ -253,7 +253,7 @@ class WatermarkAlignmentHelper {
   }
 }
 
-export default new WatermarkAlignmentHelper();
+// export default new WatermarkAlignmentHelper(); // Removed for CEP compatibility
 
 // Export to global scope for CEP compatibility
-window.Watermark-alignment = Watermarkalignment;
+window.WatermarkAlignmentHelper = WatermarkAlignmentHelper;

@@ -348,7 +348,7 @@ class WatermarkExtractionEngine {
   }
 }
 
-export default WatermarkExtractionEngine;
+// export default WatermarkExtractionEngine; // Removed for CEP compatibility
 
 // Export to global scope for CEP compatibility
-window.Watermark-extraction-engine = Watermarkextractionengine;
+window.WatermarkExtractionEngine = WatermarkExtractionEngine;

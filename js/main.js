@@ -72,7 +72,6 @@
             // AI Cleaner elements
             cleanWithAIBtn: document.getElementById('cleanWithAIBtn'),
             cleanBubblesBtn: document.getElementById('cleanBubblesBtn'),
-            convertTplBtn:  document.getElementById('convertTplBtn'),
             aiStatus:       document.getElementById('aiStatus'),
             aiStatusText:   document.getElementById('aiStatusText'),
         };
@@ -188,11 +187,52 @@
         if (psAvailable) {
             console.log('[Kohari ORC] Conectado a Photoshop');
             listenForThemeChanges();
+            // Limpiar residuos temporales de sesiones anteriores
+            cleanupOldTempFiles();
         } else {
             console.log('[Kohari ORC] Photoshop no detectado (modo standalone)');
         }
 
         console.log('[Kohari ORC] v1.2.0 — Tema:', theme);
+    }
+
+    /**
+     * Barre el directorio temporal eliminando archivos residuales (kohari_*).
+     * Se ejecuta al iniciar el panel para limpiar sesiones anteriores incompletas.
+     */
+    function cleanupOldTempFiles() {
+        try {
+            if (!window.cep || !window.cep.fs || !window.KohariPhotoshop || !window.KohariPhotoshop.api) return;
+            const api = window.KohariPhotoshop.api;
+            const tempPath = api.getTempPath();
+            if (!tempPath) return;
+
+            // Normalizar la ruta
+            let dir = tempPath
+                .replace(/^file:\/+/i, '')
+                .replace(/^file:\\+/i, '')
+                .replace(/\\/g, '/');
+            try { dir = decodeURIComponent(dir); } catch (e) {}
+            const dirWin = dir.replace(/\//g, '\\');
+            const target = navigator.appVersion.indexOf('Win') !== -1 ? dirWin : dir;
+
+            const listing = window.cep.fs.readdir(target);
+            if (!listing || listing.err !== 0 || !listing.data) return;
+
+            let cleaned = 0;
+            for (const name of listing.data) {
+                // Borrar solo archivos generados por la extensión
+                if (!/^kohari_/i.test(name)) continue;
+                const fullPath = target + (navigator.appVersion.indexOf('Win') !== -1 ? '\\' : '/') + name;
+                const r = window.cep.fs.deleteFile(fullPath);
+                if (r && r.err === 0) cleaned++;
+            }
+            if (cleaned > 0) {
+                console.log('[Kohari ORC] Limpieza inicial: ' + cleaned + ' archivos temporales eliminados');
+            }
+        } catch (e) {
+            console.warn('[Kohari ORC] No se pudo limpiar temporales antiguos:', e);
+        }
     }
 
 
@@ -221,8 +261,6 @@
         if (elements.newStripBtn) elements.newStripBtn.addEventListener('click', handleNewStrip);
         if (elements.cleanWithAIBtn) elements.cleanWithAIBtn.addEventListener('click', handleCleanWithAI);
         if (elements.cleanBubblesBtn) elements.cleanBubblesBtn.addEventListener('click', handleFillBubblesWhite);
-        if (elements.convertTplBtn) elements.convertTplBtn.addEventListener('click', handleConvertTPL);
-
         if (elements.languageInputs) {
             elements.languageInputs.forEach(input => {
                 input.addEventListener('change', (e) => {
@@ -333,6 +371,29 @@
     // LIMPIEZA CON IA (HUGGING FACE SPACES)
     // ============================================
 
+    /**
+     * Borra un archivo temporal usando la API de CEP. Tolerante a errores.
+     */
+    function deleteTempFile(filePath) {
+        if (!filePath || !window.cep || !window.cep.fs) return false;
+        try {
+            // Normalizar: quitar file:/// y decodificar URI
+            let p = filePath
+                .replace(/^file:\/+/i, '')
+                .replace(/^file:\\+/i, '')
+                .replace(/\\/g, '/');
+            p = decodeURIComponent(p);
+            // En Windows, intentar también con backslashes
+            const pWin = p.replace(/\//g, '\\');
+            const target = navigator.appVersion.indexOf('Win') !== -1 ? pWin : p;
+            const result = window.cep.fs.deleteFile(target);
+            return result && result.err === 0;
+        } catch (e) {
+            console.warn('[Kohari ORC] No se pudo borrar archivo temporal:', filePath, e);
+            return false;
+        }
+    }
+
     async function handleCleanWithAI() {
         if (state.isProcessing) {
             showToast('Ya se está procesando...', 'warning');
@@ -345,6 +406,7 @@
         }
 
         const api = window.KohariPhotoshop.api;
+        let tempFilesToClean = []; // Archivos temporales a borrar al final
 
         try {
             state.isProcessing = true;
@@ -376,6 +438,10 @@
             if (!exportResult.success) {
                 throw new Error('No se pudo exportar: ' + (exportResult.error || 'Error desconocido'));
             }
+
+            // Registrar archivos temporales para limpieza posterior
+            if (exportResult.imagePath) tempFilesToClean.push(exportResult.imagePath);
+            if (exportResult.maskPath) tempFilesToClean.push(exportResult.maskPath);
 
             // 4. Leer archivos como Base64
             showAIStatus(true, 'Cargando archivos...');
@@ -424,6 +490,10 @@
         } finally {
             state.isProcessing = false;
             elements.cleanWithAIBtn.disabled = false;
+            // Limpiar archivos temporales (JPGs/PNGs en AppData)
+            for (const f of tempFilesToClean) {
+                deleteTempFile(f);
+            }
         }
     }
 
@@ -469,79 +539,6 @@
         } finally {
             state.isProcessing = false;
             if (elements.cleanBubblesBtn) elements.cleanBubblesBtn.disabled = false;
-        }
-    }
-
-    /**
-     * Inicia el proceso de conversión de TPL a JSON
-     */
-    async function handleConvertTPL() {
-        const api = window.KohariPhotoshop.api;
-        
-        if (state.isProcessing) return;
-
-        try {
-            // 1. Pedir al usuario que seleccione los archivos .tpl
-            const filePaths = await new Promise((resolve) => {
-                const result = window.cep.fs.showOpenDialog(
-                    false, // allowMultiple (Photoshop usually supports false or true, but cep.fs is tricky)
-                    false, // chooseDirectory
-                    'Selecciona tus archivos .tpl (puedes seleccionar varios)', // title
-                    '', // initialPath
-                    ['tpl', 'TPL'] // fileTypes
-                );
-                
-                if (result.err === 0 && result.data && result.data.length > 0) {
-                    resolve(result.data);
-                } else {
-                    resolve(null);
-                }
-            });
-
-            if (!filePaths || filePaths.length === 0) return;
-
-            state.isProcessing = true;
-            if (elements.convertTplBtn) elements.convertTplBtn.disabled = true;
-            showAIStatus(true, 'Convirtiendo TPLs... Esto puede tardar.');
-
-            // filePaths is an array. We join them with "|"
-            const filePathsStr = filePaths.join('|');
-            const response = await api.convertTPLsToJSON(filePathsStr);
-            
-            if (response.success) {
-                // Mostrar diálogo para guardar (PS abrirá en ubicación por defecto)
-                const saveResult = window.cep.fs.showSaveDialogEx(
-                    'Guardar TypeR_Export.json',
-                    '', // path inicial vacío = PS elige ubicación por defecto
-                    ['json'],
-                    'TypeR_Export.json',
-                    ''
-                );
-
-                if (saveResult.err === 0 && saveResult.data) {
-                    // Guardar el archivo
-                    const writeResult = window.cep.fs.writeFile(saveResult.data, response.jsonStr);
-                    
-                    if (writeResult.err === 0) {
-                        alert('¡Conversión exitosa! Archivo guardado en:\n' + saveResult.data);
-                    } else {
-                        alert('Error al guardar el archivo: ' + writeResult.err);
-                    }
-                } else if (saveResult.err !== 0) {
-                    // Usuario canceló o hubo error en el diálogo
-                    console.log('[Kohari] Usuario canceló el guardado o error:', saveResult.err);
-                }
-            } else {
-                alert('Error al convertir TPL:\n\n' + response.error + '\n\nVerifica que los archivos .tpl contengan presets de texto válidos.');
-            }
-
-        } catch (error) {
-            console.error('[Kohari ORC] Error in handleConvertTPL:', error);
-            alert('Error inesperado: ' + error.message);
-        } finally {
-            state.isProcessing = false;
-            showAIStatus(false);
-            if (elements.convertTplBtn) elements.convertTplBtn.disabled = false;
         }
     }
 

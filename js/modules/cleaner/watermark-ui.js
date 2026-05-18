@@ -653,8 +653,7 @@ class WatermarkUI {
         canvas.width = preview.width;
         canvas.height = preview.height;
         const ctx = canvas.getContext('2d');
-        const imageData = await preview.convertToImageData();
-        ctx.putImageData(imageData, 0, 0);
+        ctx.drawImage(preview, 0, 0);
       }
     } catch (e) {
       this.logger.error('[WatermarkUI] Error renderizando preview:', e);
@@ -706,9 +705,8 @@ class WatermarkUI {
 
       // Mostrar resultado
       const canvas = this.domManager.get('removerCanvas');
-      const imageData = await result.convertToImageData();
       const ctx = canvas.getContext('2d');
-      ctx.putImageData(imageData, 0, 0);
+      ctx.drawImage(result, 0, 0);
 
       this.domManager.get('removerDownload').disabled = false;
       this.setStatus('removerStatus', '✅ Marca removida', 'success');

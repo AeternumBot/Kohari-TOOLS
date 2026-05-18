@@ -22,13 +22,6 @@
     <script src="js/core/module-loader.js"></script>
     <script src="js/core/app.js"></script>
 
-    <!-- Watermark Manager Module -->
-    <script src="js/modules/cleaner/watermark-alignment.js"></script>
-    <script src="js/modules/cleaner/watermark-extraction-engine.js"></script>
-    <script src="js/modules/cleaner/watermark-removal-engine.js"></script>
-    <script src="js/modules/cleaner/watermark-ui.js"></script>
-    <script src="js/modules/cleaner/watermark.module.js"></script>
-    <link rel="stylesheet" href="js/modules/cleaner/watermark.css">
 </head>
 <body>
     <div class="container">
@@ -62,12 +55,6 @@
                     <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/>
                 </svg>
                 Limpiador
-            </button>
-            <button class="tab-btn" data-tab="extras">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M13.73 15l2.25 2.25c.39.39 1.02.39 1.41 0l3.18-3.18c.39-.39.39-1.02 0-1.41L18.32 10.4l-4.59 4.6zM10.4 18.32l4.6-4.59-2.25-2.25-4.59 4.6c-.39.39-.39 1.02 0 1.41l3.18 3.18c.39.39 1.02.39 1.41 0zM19.03 3.51L16.49 1H7.51L4.97 3.51V12.5l2.54 2.54h8.98l2.54-2.54V3.51z"/>
-                </svg>
-                Extras
             </button>
         </nav>
 
@@ -344,51 +331,6 @@
                 </div>
             </div>
 
-            <!-- Extras Tab Panel -->
-            <div class="tab-panel" id="tab-extras">
-                <div class="extras-scroll">
-
-                    <!-- Hero intro -->
-                    <div class="extras-hero">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" class="extras-hero-icon">
-                            <path d="M13.73 15l2.25 2.25c.39.39 1.02.39 1.41 0l3.18-3.18c.39-.39.39-1.02 0-1.41L18.32 10.4l-4.59 4.6zM10.4 18.32l4.6-4.59-2.25-2.25-4.59 4.6c-.39.39-.39 1.02 0 1.41l3.18 3.18c.39.39 1.02.39 1.41 0zM19.03 3.51L16.49 1H7.51L4.97 3.51V12.5l2.54 2.54h8.98l2.54-2.54V3.51z"/>
-                        </svg>
-                        <div>
-                            <span class="extras-hero-title">Herramientas Extra</span>
-                            <span class="extras-hero-sub">Utilidades de soporte para el flujo de scanlation</span>
-                        </div>
-                    </div>
-
-                    <!-- Tool 1: Conversor TPL -->
-                    <div class="extra-tool">
-                        <div class="extra-tool-header">
-                            <div class="extra-tool-icon extra-tool-icon--blue">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/>
-                                </svg>
-                            </div>
-                            <div class="extra-tool-meta">
-                                <span class="extra-tool-name">Conversor TPL → TypeR</span>
-                                <span class="extra-tool-desc">Convierte presets de pincel .tpl al formato TypeR_Export.json listo para importar</span>
-                            </div>
-                        </div>
-
-                        <button id="convertTplBtn" class="extra-tool-btn extra-tool-btn--blue">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-                            </svg>
-                            Convertir .TPL a JSON
-                        </button>
-                    </div>
-
-                    <!-- Nota al pie -->
-                    <p class="extras-footnote">
-                        Las herramientas con IA requieren conexión a internet.<br>
-                        El procesamiento ocurre en servidores externos — tu computador no es afectado.
-                    </p>
-
-                </div>
-            </div>
         </div>
 
         <!-- Loading Overlay -->

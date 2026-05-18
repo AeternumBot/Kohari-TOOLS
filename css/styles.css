@@ -1582,6 +1582,34 @@ body {
     box-shadow: none;
 }
 
+.extra-tool-btn--purple {
+    background-color: transparent;
+    color: #9966cc;
+    border: 1px solid #9966cc;
+}
+
+.extra-tool-btn--purple:hover {
+    background-color: rgba(153, 102, 204, 0.1);
+    box-shadow: 0 2px 8px rgba(153, 102, 204, 0.2);
+    transform: translateY(-1px);
+}
+
+.extra-tool-btn--purple:active { transform: translateY(0); }
+
+.extra-tool-btn--purple:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Icon colors */
+.extra-tool-icon--purple {
+    background: linear-gradient(135deg, rgba(153, 102, 204, 0.1), rgba(153, 102, 204, 0.05));
+    color: #9966cc;
+    border: 1px solid rgba(153, 102, 204, 0.2);
+}
+
 /* Status inline */
 .extra-tool-status {
     display: flex;
